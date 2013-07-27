@@ -1,0 +1,24 @@
+.\" Copyright Tetsuya Higashi 2009-2013
+.\"
+.TH COUNTER 1 "March 30, 2009"
+.SH 名前
+counter \- ステップ数をカウントし, cvs ファイルに出力する.
+.SH 書式
+.BI "counter [" -d " [" dirname ... ] |source.list | filename ... ]
+.SH 説明
+プログラム
+.B counter
+\ は,\ C・C++・shell・ini\ ファイルの中身を走査し,\ 総ステップ数・実ステップ数・コメント数・コメント率を\ stepcount.csv\ ファイルに出力する.
+.PP
+引数に\ source.list\ を指定した場合,\ そこに書かれているファイルのリストを読み込みカウントする.
+引数になにも指定していない場合,\ カレントディレクトリのファイルをカウントする.
+.PP
+対象となるファイルは,\ 拡張子が\ .c .cc .cpp .sh .ini\ であるファイル,
+そして先頭に\ #!/bin/sh\ が書かれているファイルである.
+.PP
+出力されるファイルは\ stepcount.csv,\ debug.log\ である.
+万全を記すために\ debug.log\ を確認したほうがよい.
+.SH 注意
+プログラムのバグについては\ berio.sequenza@gmail.com\ に報告してください。
+.SH 著者
+Tetsuya Higashi\ (berio.sequenza@gmail.com)

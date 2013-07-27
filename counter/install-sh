@@ -1,0 +1,10 @@
+#!/bin/sh
+
+progname=counter
+install_dir=$HOME/bin
+man_dir=$HOME
+CP="cp -rf"
+
+$CP $progname $install_dir
+$CP man $man_dir
+
