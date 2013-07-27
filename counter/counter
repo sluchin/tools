@@ -1,0 +1,242 @@
+#!/bin/sh
+#----*----1----*----2----*----3----*----4----*----5----*----6----*----#
+# Format:   counter [-d [dirname ...]|source.list|filename ...]
+# Function: step counter
+# Return:   success: 0  warning(no file): 1  error: 9
+#----*----1----*----2----*----3----*----4----*----5----*----6----*----#
+# all     All
+# com     Comment
+# blk     Blank
+# loc     Lines Of Code
+# coc     Charcters Of Code
+# l(Line) c(Character)
+#----*----1----*----2----*----3----*----4----*----5----*----6----*----#
+#
+
+progname=`basename $0`
+curdir=`pwd`
+AWK=gawk
+exitcode=0
+count=0
+SOURCE=1
+SHELL=2
+NONFILE=0
+
+echo `date "+[%Y-%m-%d %H:%M:%S]"` start
+
+file_exist()
+{
+    if [ -d "$1" ]; then
+        return $NONFILE
+    fi
+    if [ -r "$1" ]; then
+        case $1 in
+            *.h | *.c | *.cc | *.cpp)
+                return $SOURCE
+                ;;
+             *.sh | *.ini )
+                return $SHELL
+                ;;
+            * )
+                file_head=`head -n1 $1`
+                if [ "$file_head" = "#!/bin/sh" ]; then
+                    return $SHELL
+                fi
+                return $NONFILE
+                ;;
+        esac
+    else
+        echo "can't read file($1)"
+        return $NONFILE
+    fi
+}
+
+execute_file()
+{
+    case $1 in
+        $SOURCE )
+            source_count $2
+            return $?
+            ;;
+        $SHELL )
+            shell_count $2
+            return $?
+            ;;
+        $NONFILE )
+            ;;
+    esac
+}
+
+source_count()
+{
+    # print dirname and filename
+    printf "%s,%s," `dirname $1` `basename $1` >> ./stepcount.csv
+
+    $AWK '  BEGIN { all_l=0;all_c=0;com_l=0;com_c=0;blk=0;
+                    loc=0;coc=0;com_l_per=0;com_c_per=0 }
+        # Common
+        { all_l = NR; all_c += length }
+        /^[\t| ]*$/ { ++blk; printf("%s blank --> line=%d count=%d\n", FILENAME, FNR, blk)>> "./debug.log"}
+
+        # .h or .c or .cc
+        /^[\t| ]*\/\*/, /\*\/$/ { ++com_l; com_c += length;
+        printf("%s comment(/*) --> line=%d count=%d\n", FILENAME, FNR, com_l)>> "./debug.log" }
+        /^[\t| ]*\/\// { ++com_l; com_c += length;
+        printf("%s comment(//) --> line=%d count=%d\n", FILENAME, FNR, com_l)>> "./debug.log" }
+        ( $0 !~ /^\/\*/ && /\/\*/ ) {
+            for ( i = 1; i <= NF; i++ ) {
+                if ( $i ~ /^\/\*/ ) {
+                    id = index($0, $i)
+                    str = substr($0, id)
+                    com_c += length(str)
+                    break
+                }
+            }
+        }
+
+        END {   OFS = ","
+                loc = all_l - com_l - blk
+                coc = all_c - com_c
+                if ( com_l != 0 && com_c != 0 ) {
+                    com_l_per = 100 / (all_l / com_l)
+                    com_c_per = 100 / (all_c / com_c)
+                }
+                print all_l, all_c, com_l, com_c, blk, loc, coc, com_l_per, com_c_per >> "./stepcount.csv"
+        } ' $1
+}
+
+shell_count()
+{
+    # print dirname and filename
+    printf "%s,%s," `dirname $1` `basename $1` >> ./stepcount.csv
+
+    $AWK '  BEGIN { all_l=0;all_c=0;com_l=0;com_c=0;blk=0;
+                    loc=0;coc=0;com_l_per=0;com_c_per=0 }
+        # Common
+        { all_l = NR; all_c += length }
+        /^[\t| ]*$/ { ++blk; printf("%s blank --> line=%d count=%d\n", FILENAME, FNR, blk)>> "./debug.log"}
+
+        # shell
+        /^[\t| ]*#/ { ++com_l; com_c += length;
+        printf("%s comment(#) --> line=%d count=%d\n", FILENAME, FNR, com_l)>> "./debug.log" }
+        ( $0 !~ /^#/ && /#/ ) {
+            for ( i = 1; i <= NF; i++ ) {
+                if ( $i ~ /^#/ ) {
+                    id = index($0, $i)
+                    str = substr($0, id)
+                    sh_com_c += length(str)
+                    break
+                }
+            }
+        }
+
+        END {   OFS = ","
+                loc = all_l - com_l - blk
+                coc = all_c - com_c
+                if ( com_l != 0 && com_c != 0 ) {
+                    com_l_per = 100 / (all_l / com_l)
+                    com_c_per = 100 / (all_c / com_c)
+                }
+                print all_l, all_c, com_l, com_c, blk, loc, coc, com_l_per, com_c_per >> "./stepcount.csv"
+        } ' $1
+}
+
+# output column name
+echo "dirname,filename,all(line),all(char),comment(line),comment(char),blank,code(line),code(char),per of comment(line),per of comment(char)" > "./stepcount.csv"
+
+# no argument
+if [ $# -eq 0 ]; then
+    find $curdir -type f -print | (
+    while read fn
+    do
+        file_exist $fn
+        result=$?
+        if [ $result -ne $NONFILE ]; then
+            execute_file $result $fn
+            exitcode=$?
+            count=`expr $count + 1`
+        fi
+    done
+    echo "$count files done"
+    exit $exitcode
+    )
+    exitcode=$?
+fi
+
+# not -d option
+if [ "$1" != "-d" -a $# -ge 1 ]; then
+    if [ `basename "$1"` = "source.list" -a -r "$1" ]; then
+        while read fn
+        do
+            file_exist $fn
+            result=$?
+            if [ $result -ne $NONFILE ]; then
+                execute_file $result $fn
+                exitcode=$?
+                count=`expr $count + 1`
+            fi
+        done < "$1"
+    else
+        for fn in "$@"
+        do
+            file_exist $fn
+            result=$?
+            if [ $result -ne $NONFILE ]; then
+                execute_file $result $fn
+                exitcode=$?
+                count=`expr $count + 1`
+            fi
+        done
+    fi
+    if [ $count -eq 0 ]; then
+        echo "file nothing"
+        exitcode=1
+    else
+        echo "$count files done"
+    fi
+fi
+
+# -d option
+search_dir=""
+if [ "$1" = "-d" -a $# -ge 2 ]; then
+    shift
+    for dir in "$@"
+    do
+        if [ -d "$dir" ]; then
+            search_dir="$search_dir $dir"
+        else
+            echo "no directory($dir)"
+            exitcode=1
+        fi
+    done
+elif [ "$1" = "-d" -a $# -eq 1 ]; then
+    search_dir="."
+fi
+
+if [ -n "$search_dir" ]; then
+    find $search_dir -type f -print | (
+    while read fn
+    do
+        file_exist $fn
+        result=$?
+        if [ $result -ne $NONFILE ]; then
+            execute_file $result $fn
+            exitcode=$?
+            count=`expr $count + 1`
+        fi
+    done
+    if [ $count -eq 0 ]; then
+        echo "file nothing"
+        exitcode=1
+    else
+        echo "$count files done"
+    fi
+    exit $exitcode
+    )
+    exitcode=$?
+fi
+
+echo `date "+[%Y-%m-%d %H:%M:%S]"` end
+
+exit $exitcode
+
