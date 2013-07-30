@@ -16,13 +16,14 @@
 progname=`basename $0`
 curdir=`pwd`
 AWK=gawk
+MV=mv
 exitcode=0
 count=0
 SOURCE=1
 SHELL=2
 NONFILE=0
 
-echo `date "+[%Y-%m-%d %H:%M:%S]"` start
+echo "`date "+[%Y-%m-%d %H:%M:%S]"` Started."
 
 file_exist()
 {
@@ -55,11 +56,11 @@ execute_file()
 {
     case $1 in
         $SOURCE )
-            source_count $2
+            source_count $2 $3
             return $?
             ;;
         $SHELL )
-            shell_count $2
+            shell_count $2 $3
             return $?
             ;;
         $NONFILE )
@@ -70,7 +71,7 @@ execute_file()
 source_count()
 {
     # print dirname and filename
-    printf "%s,%s," `dirname $1` `basename $1` >> ./stepcount.csv
+    printf "%s,%s," `dirname $1` `basename $1` >> ./stepcount.tmp
 
     $AWK '  BEGIN { all_l=0;all_c=0;com_l=0;com_c=0;blk=0;
                     loc=0;coc=0;com_l_per=0;com_c_per=0 }
@@ -101,14 +102,14 @@ source_count()
                     com_l_per = 100 / (all_l / com_l)
                     com_c_per = 100 / (all_c / com_c)
                 }
-                print all_l, all_c, com_l, com_c, blk, loc, coc, com_l_per, com_c_per >> "./stepcount.csv"
+                print all_l, all_c, com_l, com_c, blk, loc, coc, com_l_per, com_c_per >> "./stepcount.tmp"
         } ' $1
 }
 
 shell_count()
 {
     # print dirname and filename
-    printf "%s,%s," `dirname $1` `basename $1` >> ./stepcount.csv
+    printf "%s,%s," `dirname $1` `basename $1` >> ./stepcount.tmp
 
     $AWK '  BEGIN { all_l=0;all_c=0;com_l=0;com_c=0;blk=0;
                     loc=0;coc=0;com_l_per=0;com_c_per=0 }
@@ -137,22 +138,30 @@ shell_count()
                     com_l_per = 100 / (all_l / com_l)
                     com_c_per = 100 / (all_c / com_c)
                 }
-                print all_l, all_c, com_l, com_c, blk, loc, coc, com_l_per, com_c_per >> "./stepcount.csv"
+                print all_l, all_c, com_l, com_c, blk, loc, coc, com_l_per, com_c_per >> "./stepcount.tmp"
         } ' $1
 }
 
 # output column name
-echo "dirname,filename,all(line),all(char),comment(line),comment(char),blank,code(line),code(char),per of comment(line),per of comment(char)" > "./stepcount.csv"
+output_colname()
+{
+    echo "dirname,filename,all(line),all(char),comment(line),comment(char),blank,code(line),code(char),per of comment(line),per of comment(char)" > ./stepcount.tmp
+}
+
+# output filename
+output="`date "+%Y%m%d%H%M%S"`_step"
 
 # no argument
 if [ $# -eq 0 ]; then
+    output=$output"_`basename $curdir`.csv"
+    output_colname
     find $curdir -type f -print | (
     while read fn
     do
         file_exist $fn
         result=$?
         if [ $result -ne $NONFILE ]; then
-            execute_file $result $fn
+            execute_file $result $fn $output
             exitcode=$?
             count=`expr $count + 1`
         fi
@@ -166,23 +175,27 @@ fi
 # not -d option
 if [ "$1" != "-d" -a $# -ge 1 ]; then
     if [ `basename "$1"` = "source.list" -a -r "$1" ]; then
+        output=$output".csv"
+        output_colname
         while read fn
         do
             file_exist $fn
             result=$?
             if [ $result -ne $NONFILE ]; then
-                execute_file $result $fn
+                execute_file $result $fn $output
                 exitcode=$?
                 count=`expr $count + 1`
             fi
         done < "$1"
     else
+        output=$output".csv"
+        output_colname
         for fn in "$@"
         do
             file_exist $fn
             result=$?
             if [ $result -ne $NONFILE ]; then
-                execute_file $result $fn
+                execute_file $result $fn $output
                 exitcode=$?
                 count=`expr $count + 1`
             fi
@@ -199,6 +212,8 @@ fi
 # -d option
 search_dir=""
 if [ "$1" = "-d" -a $# -ge 2 ]; then
+    output=$output"_`basename $2`.csv"
+    output_colname
     shift
     for dir in "$@"
     do
@@ -210,6 +225,8 @@ if [ "$1" = "-d" -a $# -ge 2 ]; then
         fi
     done
 elif [ "$1" = "-d" -a $# -eq 1 ]; then
+    output=$output"_`basename $curdir`.csv"
+    output_colname
     search_dir="."
 fi
 
@@ -220,7 +237,7 @@ if [ -n "$search_dir" ]; then
         file_exist $fn
         result=$?
         if [ $result -ne $NONFILE ]; then
-            execute_file $result $fn
+            execute_file $result $fn $output
             exitcode=$?
             count=`expr $count + 1`
         fi
@@ -229,14 +246,17 @@ if [ -n "$search_dir" ]; then
         echo "file nothing"
         exitcode=1
     else
-        echo "$count files done"
+        echo "$count files done."
     fi
     exit $exitcode
     )
     exitcode=$?
 fi
 
-echo `date "+[%Y-%m-%d %H:%M:%S]"` end
+# change filename
+$MV ./stepcount.tmp $output
+
+echo "`date "+[%Y-%m-%d %H:%M:%S]"` Done."
 
 exit $exitcode
 
