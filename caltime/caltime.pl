@@ -81,53 +81,54 @@ my @commontime = (  9.25,  9.50,  9.75, 10.00, #  9:00〜10:00
                    17.25, 17.50, 17.75, 18.00, # 17:00〜18:00
 );
 
-# 残業時間(18:00〜22:00)
+# 残業時間(18:00〜22:00, 5:00〜8:30)
 my @overtime = ( 18.25, 18.50,               # 18:00〜18:30
                  19.25, 19.50, 19.75, 20.00, # 19:00〜20:00
                  20.25, 20.50, 20.75, 21.00, # 20:00〜21:00
                  21.25, 21.50,               # 21:00〜21:30
-);
-
-# 深夜残業(22:00〜)
-my @latetime = ( 22.25, 22.50, 22.75, 23.00, # 22:00〜23:00
-                 23.25, 23.50, 23.75, 24.00, # 23:00〜00:00
-                 25.25, 25.50, 25.75, 26.00, # 01:00〜02:00
-                 26.25, 26.50, 26.75, 27.00, # 02:00〜03:00
-                 27.25, 27.50,               # 03:00〜03:30
-                 28.25, 28.50, 28.75, 29.00, # 04:00〜05:00
                  29.25, 29.50, 29.75, 30.00, # 05:00〜06:00
                  30.25, 30.50, 30.75, 31.00, # 06:00〜07:00
                  31.25, 31.50, 31.75, 32.00, # 07:00〜08:00
                  32.25, 32.50,               # 08:00〜08:30
 );
 
+# 深夜残業(22:00〜5:00)
+my @latetime = ( 22.25, 22.50, 22.75, 23.00, # 22:00〜23:00
+                 23.25, 23.50, 23.75, 24.00, # 23:00〜00:00
+                 25.25, 25.50, 25.75, 26.00, # 01:00〜02:00
+                 26.25, 26.50, 26.75, 27.00, # 02:00〜03:00
+                 27.25, 27.50,               # 03:00〜03:30
+                 28.25, 28.50, 28.75, 29.00, # 04:00〜05:00
+);
+
 # 休憩時間
 my @resttime = ( 12.25, 12.50, 12.75, 13.00, # 12:00～13:00
-                 18.75, 19.00,               # 18:50～19:00
+                 18.75, 19.00,               # 18:30～19:00
                  21.75, 22.00,               # 21:30～22:00
                  24.25, 24.50, 24.75, 25.00, # 00:00～01:00
                  27.75, 28.00,               # 03:30～04:00
                  32.75, 33.00,               # 08:30～09:00
 );
 
-my $header = "日,曜,始業時刻,終業時刻,通常,残業,深夜,休憩,合計\n";
+my $header = "日,曜,始業時刻,終業時刻,通常,残業,深夜,休日,休日+深夜,休憩,合計\n";
 
 my $enc;
+my $utf8 = 'UTF-8';
 if ($^O eq "MSWin32") {
     $enc = 'Shift_JIS';
 }
 else {
-    $enc = 'UTF-8';
+    $enc = $utf8;
 }
-#print $enc . "\n";
 
 sub read_file($)
 {
     my $file = shift;
     my ($in, $out, $output);
-    my ($date, $week, $begin, $end, $rest);
-    my ($common, $over, $late);
+    my ($date, $week, $begin, $end, $inf);
+    my ($common, $over, $late, $rest);
     my ($common_sum, $over_sum, $late_sum);
+    my ($holiday_sum, $holi_late_sum);
     my ($diff, $worktime);
     my ($group, $name);
     my @work;
@@ -140,9 +141,9 @@ sub read_file($)
     (undef, $group, undef, $name) = split(/,/, $one);
     $group = "" unless (defined $group);
     $name = "" unless (defined $name);
-    $group = decode($enc, $group);
-    $name = decode($enc, $name);
-    #$output = $group . " " . $name . "\n";
+    $group = decode($utf8, $group);
+    $name = decode($utf8, $name);
+
     # 2行目
     my $two = <$in>;
 
@@ -155,7 +156,7 @@ sub read_file($)
         next if ($line eq "");
         $line = decode($enc, $line);
 
-        ($date, $week, $begin, undef, undef,
+        ($date, $week, $begin, $inf, undef,
          undef, undef, undef, undef, undef, $end) = split(/,/, $line);
 
         # 始業時間
@@ -170,8 +171,8 @@ sub read_file($)
             $output .= "$week" if ((!defined $week) || ($week ne ""));
             $output .= $sep . "$begin";
         }
-
         $output .= $sep;
+
         # 終業時間
         unless ((defined $end) || ($end eq "")){
             next;
@@ -186,24 +187,53 @@ sub read_file($)
         # 通常時間
         $common = add_time($begin, $end, @commontime);
         if (defined $common) {
-            $common_sum += $common;
-            $output .= "$common"
+            if ((defined $inf) && ($inf eq "出")) {
+                $holiday_sum += $common;
+            }
+            else {
+                $common_sum += $common;
+                $output .= "$common"
+            }
         }
         $output .= $sep;
 
         # 残業時間
         $over = add_time($begin, $end, @overtime);
         if (defined $over) {
-            $over_sum += $over;
-            $output .= "$over";
+            if ((defined $inf) && ($inf eq "出")) {
+                # 休日出勤の場合, 残業は関係ない
+                $holiday_sum += $over;
+            } else {
+                $over_sum += $over;
+                $output .= "$over";
+            }
         }
         $output .= $sep;
 
         # 深夜残業
         $late = add_time($begin, $end, @latetime);
         if (defined $late) {
-            $late_sum += $late;
-            $output .= "$late";
+            if ((defined $inf) && ($inf eq "出")) {
+                # 休日+深夜
+                $holi_late_sum += $late;
+            }
+            else {
+                $late_sum += $late;
+                $output .= "$late";
+            }
+        }
+        $output .= $sep;
+
+        # 休日出勤
+        if ((defined $inf) && ($inf eq "出")) {
+            $common += $over if (defined $over);
+            $output .= $common;
+        }
+        $output .= $sep;
+
+        # 休日出勤+深夜
+        if ((defined $inf) && ($inf eq "出")) {
+            $output .= $late if (defined $late);
         }
         $output .= $sep;
 
@@ -223,25 +253,31 @@ sub read_file($)
     $common_sum = 0.0 unless (defined $common_sum);
     $over_sum = 0.0 unless (defined $over_sum);
     $late_sum = 0.0 unless (defined $late_sum);
+    $holiday_sum = 0.0 unless (defined $holiday_sum);
+    $holi_late_sum = 0.0 unless (defined $holi_late_sum);
     $worktime = 0.0 unless (defined $worktime);
 
     $output .= "\n";
-    $output .= "通常 " . $common_sum . "\n";
-    $output .= "残業 " . $over_sum . "\n";
-    $output .= "深夜 " . $late_sum . "\n";
+    $output .= "通常" . $sep . $common_sum . "\n";
+    $output .= "残業" . $sep . $over_sum . "\n";
+    $output .= "深夜" . $sep . $late_sum . "\n";
+    $output .= "休日" . $sep . $holiday_sum . "\n";
+    $output .= "休日+深夜" . $sep . $holi_late_sum . "\n";
     $output .= "\n合計時間\n";
     $output .= $worktime . "\n";
 
     print encode($enc, $output);
 
-    my ($outfn, $path, $suffix) = fileparse($file, ('.csv'));
-    $outfn .= "_" . encode($enc, $group) unless ($group eq "");
-    $outfn .= "_" . encode($enc, $name) unless ($name eq "");
+    my ($outfn, undef, undef) = fileparse($file, ('.csv'));
+    $outfn .= "_" . encode($utf8, $group) unless ($group eq "");
+    $outfn .= "_" . encode($utf8, $name) unless ($name eq "");
+    $outfn .= ".csv";
+    $outfn = Encode::decode_utf8($outfn);
+    $outfn =~ s/\s+//g; # 空白削除
     open $out, ">$outfn"
         or die print ": open file error[" . $file . "]: $!";
     print $out encode($enc, $output);
     close $out;
-
 }
 
 sub conv_hour($)
