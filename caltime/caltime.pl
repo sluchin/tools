@@ -1,4 +1,6 @@
-#/usr/bin/perl -w
+#!/usr/bin/perl -w
+#perl -w
+#C:\Perl64\bin\perl -w
 
 ##
 # 勤務時間を計算する.
@@ -20,17 +22,16 @@
 # 2013/07/02,火,09.00,18.00,8,0,0,1,8
 # 2013/07/03,水,09.00,19.50,8,1,0,1.5,9
 #
+# ディレクトリ配下
 # find . -type f | while read fn; do caltime.pl $fn; done
-#
-# $Date$
-# $Author$
-# $Revision$
-# $Id$
 #
 
 use strict;
 use warnings;
 use File::Basename;
+
+use utf8;
+use Encode qw/encode decode/;
 
 our $VERSION = do { my @r = ( q$Revision: 1.10 $ =~ /\d+/g ); sprintf "%d." . "%02d" x $#r, @r if (@r) };
 my $progname = basename($0);
@@ -47,7 +48,7 @@ my $sep = ",";
 # 15分単位で集計
 my @unitmin = ( 00, 15, 30, 45 );
 
-# 時を変換(00:00 は 24:00)
+# 時を変換(00:00 は 24.00)
 my %hconv = ( "00" => "24",
               "01" => "25",
               "02" => "26",
@@ -80,16 +81,15 @@ my @commontime = (  9.25,  9.50,  9.75, 10.00, #  9:00〜10:00
                    17.25, 17.50, 17.75, 18.00, # 17:00〜18:00
 );
 
-# 残業時間(18:00〜22:30)
+# 残業時間(18:00〜22:00)
 my @overtime = ( 18.25, 18.50,               # 18:00〜18:30
                  19.25, 19.50, 19.75, 20.00, # 19:00〜20:00
                  20.25, 20.50, 20.75, 21.00, # 20:00〜21:00
                  21.25, 21.50,               # 21:00〜21:30
-                 22.25, 22.50,               # 22:00〜22:30
 );
 
-# 深夜残業(22:30〜)
-my @latetime = ( 22.75, 23.00,               # 22:30〜23:00
+# 深夜残業(22:00〜)
+my @latetime = ( 22.25, 22.50, 22.75, 23.00, # 22:00〜23:00
                  23.25, 23.50, 23.75, 24.00, # 23:00〜00:00
                  25.25, 25.50, 25.75, 26.00, # 01:00〜02:00
                  26.25, 26.50, 26.75, 27.00, # 02:00〜03:00
@@ -110,12 +110,24 @@ my @resttime = ( 12.25, 12.50, 12.75, 13.00, # 12:00～13:00
                  32.75, 33.00,               # 08:30～09:00
 );
 
+my $header = "日,曜,始業時刻,終業時刻,通常,残業,深夜,休憩,合計\n";
+
+my $enc;
+if ($^O eq "MSWin32") {
+    $enc = 'Shift_JIS';
+}
+else {
+    $enc = 'UTF-8';
+}
+#print $enc . "\n";
+
 sub read_file($)
 {
     my $file = shift;
-    my $in;
+    my ($in, $out, $output);
     my ($date, $week, $begin, $end, $rest);
     my ($common, $over, $late);
+    my ($common_sum, $over_sum, $late_sum);
     my ($diff, $worktime);
     my ($group, $name);
     my @work;
@@ -126,17 +138,22 @@ sub read_file($)
     # 1行目
     my $one = <$in>;
     (undef, $group, undef, $name) = split(/,/, $one);
-    print $group . " " . $name . "\n";
+    $group = "" unless (defined $group);
+    $name = "" unless (defined $name);
+    $group = decode($enc, $group);
+    $name = decode($enc, $name);
+    #$output = $group . " " . $name . "\n";
     # 2行目
     my $two = <$in>;
 
     # ヘッダ
-    print "日,曜,始業時刻,終業時刻,通常,残業,深夜,休憩,合計\n";
+    $output .= $header;
 
     while (defined(my $line = <$in>)) {
 
         chomp($line);
         next if ($line eq "");
+        $line = decode($enc, $line);
 
         ($date, $week, $begin, undef, undef,
          undef, undef, undef, undef, undef, $end) = split(/,/, $line);
@@ -149,12 +166,12 @@ sub read_file($)
         else {
             $begin = conv_min($begin);
             next unless defined $begin;
-            print "$date" . $sep;
-            print "$week" if ((!defined $week) || ($week ne ""));
-            print $sep . "$begin";
+            $output .= "$date" . $sep;
+            $output .= "$week" if ((!defined $week) || ($week ne ""));
+            $output .= $sep . "$begin";
         }
 
-        print $sep;
+        $output .= $sep;
         # 終業時間
         unless ((defined $end) || ($end eq "")){
             next;
@@ -162,49 +179,69 @@ sub read_file($)
             $end = conv_hour($end);
             $end = conv_min($end);
             next unless defined $end;
-            print "$end";
+            $output .= "$end";
         }
-        print $sep;
+        $output .= $sep;
 
         # 通常時間
         $common = add_time($begin, $end, @commontime);
-        print "$common" if (defined $common);
-        print $sep;
+        if (defined $common) {
+            $common_sum += $common;
+            $output .= "$common"
+        }
+        $output .= $sep;
 
         # 残業時間
         $over = add_time($begin, $end, @overtime);
-        print "$over" if (defined $over);
-        print $sep;
+        if (defined $over) {
+            $over_sum += $over;
+            $output .= "$over";
+        }
+        $output .= $sep;
 
         # 深夜残業
         $late = add_time($begin, $end, @latetime);
-        print "$late" if (defined $late);
-        print $sep;
+        if (defined $late) {
+            $late_sum += $late;
+            $output .= "$late";
+        }
+        $output .= $sep;
 
         # 休憩時間取得
         $rest = add_time($begin, $end, @resttime);
-        print "$rest" if (defined $rest);
-        print $sep;
+        $output .= "$rest" if (defined $rest);
+        $output .= $sep;
 
         # 勤務時間の計算
         $diff = ($end - $begin) - $rest;
-        print $diff . "\n";
+        $output .= $diff . "\n";
         push(@work, $diff);
         $worktime += $diff;
     } # while
     close $in;
 
-    print "\n合計時間\n";
-    print "$worktime\n";
-    if (260 < $worktime) {
-        print "\n(・ω・)\n";
-    } elsif (200 == $worktime) {
-        print "\n(`Щ´)\n";
-    } elsif (160 <= $worktime && $worktime < 260) {
-        print "\n(・Х・)\n";
-    } elsif ($worktime < 160) {
-        print "\n(￣□￣;)\n";
-    }
+    $common_sum = 0.0 unless (defined $common_sum);
+    $over_sum = 0.0 unless (defined $over_sum);
+    $late_sum = 0.0 unless (defined $late_sum);
+    $worktime = 0.0 unless (defined $worktime);
+
+    $output .= "\n";
+    $output .= "通常 " . $common_sum . "\n";
+    $output .= "残業 " . $over_sum . "\n";
+    $output .= "深夜 " . $late_sum . "\n";
+    $output .= "\n合計時間\n";
+    $output .= $worktime . "\n";
+
+    print encode($enc, $output);
+
+    my ($outfn, $path, $suffix) = fileparse($file, ('.csv'));
+    $outfn .= "_" . encode($enc, $group) unless ($group eq "");
+    $outfn .= "_" . encode($enc, $name) unless ($name eq "");
+    open $out, ">$outfn"
+        or die print ": open file error[" . $file . "]: $!";
+    print $out encode($enc, $output);
+    close $out;
+
 }
 
 sub conv_hour($)
