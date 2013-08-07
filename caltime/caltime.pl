@@ -17,10 +17,10 @@
 # 2013/07/03,水,09:00,修,,,,,,,19:30,修,,,,
 #
 # 出力
-# 日,曜,始業時刻,終業時刻,通常,残業,深夜,休憩,合計
-# 2013/07/01,月,09.00,18.00,8,0,0,1,8
-# 2013/07/02,火,09.00,18.00,8,0,0,1,8
-# 2013/07/03,水,09.00,19.50,8,1,0,1.5,9
+# 日,曜,始業時刻,終業時刻,通常,残業,深夜,休日,休日+深夜,休憩,合計
+# 2013/07/01,月,09.00,18.00,8,0,0,,,1,8
+# 2013/07/02,火,09.00,18.00,8,0,0,,,1,8
+# 2013/07/03,水,09.00,19.50,8,1,0,,,1.5,9
 #
 # ディレクトリ配下
 # find . -type f | while read fn; do caltime.pl $fn; done
@@ -33,7 +33,7 @@ use File::Basename;
 use utf8;
 use Encode qw/encode decode/;
 
-our $VERSION = do { my @r = ( q$Revision: 1.10 $ =~ /\d+/g ); sprintf "%d." . "%02d" x $#r, @r if (@r) };
+our $VERSION = do { my @r = ( q$Revision: 0.10 $ =~ /\d+/g ); sprintf "%d." . "%02d" x $#r, @r if (@r) };
 my $progname = basename($0);
 
 # ステータス
@@ -159,29 +159,20 @@ sub read_file($)
         ($date, $week, $begin, $inf, undef,
          undef, undef, undef, undef, undef, $end) = split(/,/, $line);
 
+        next unless ((defined $date) || ($date eq ""));
         # 始業時間
-        unless ((defined $begin) || ($begin eq "") ||
-                (defined $date) || ($date eq "")) {
-            next;
-        }
-        else {
-            $begin = conv_min($begin);
-            next unless defined $begin;
-            $output .= "$date" . $sep;
-            $output .= "$week" if ((!defined $week) || ($week ne ""));
-            $output .= $sep . "$begin";
-        }
+        $begin = conv_min($begin);
+        next unless defined $begin;
+        $output .= "$date" . $sep;
+        $output .= "$week" if ((!defined $week) || ($week ne ""));
+        $output .= $sep . "$begin";
         $output .= $sep;
 
         # 終業時間
-        unless ((defined $end) || ($end eq "")){
-            next;
-        } else {
-            $end = conv_hour($end);
-            $end = conv_min($end);
-            next unless defined $end;
-            $output .= "$end";
-        }
+        $end = conv_hour($end);
+        $end = conv_min($end);
+        next unless defined $end;
+        $output .= "$end";
         $output .= $sep;
 
         # 通常時間
@@ -268,6 +259,7 @@ sub read_file($)
 
     print encode($enc, $output);
 
+    # ファイルに出力
     my ($outfn, undef, undef) = fileparse($file, ('.csv'));
     $outfn .= "_" . encode($utf8, $group) unless ($group eq "");
     $outfn .= "_" . encode($utf8, $name) unless ($name eq "");
@@ -275,7 +267,7 @@ sub read_file($)
     $outfn = Encode::decode_utf8($outfn);
     $outfn =~ s/\s+//g; # 空白削除
     open $out, ">$outfn"
-        or die print ": open file error[" . $file . "]: $!";
+        or die print ": open file error[" . $outfn . "]: $!";
     print $out encode($enc, $output);
     close $out;
 }
