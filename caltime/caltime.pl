@@ -36,7 +36,7 @@ use utf8;
 use Encode qw/encode decode/;
 use File::Find;
 
-our $VERSION = do { my @r = ( q$Revision: 0.11 $ =~ /\d+/g ); sprintf "%d." . "%02d" x $#r, @r if (@r) };
+our $VERSION = do { my @r = ( q$Revision: 0.12 $ =~ /\d+/g ); sprintf "%d." . "%02d" x $#r, @r if (@r) };
 my $progname = basename($0);
 
 # プロトタイプ
@@ -44,6 +44,7 @@ sub print_version();
 sub usage();
 sub read_files($);
 sub read_file($);
+sub calc_sum($$$);
 sub conv_hour($);
 sub conv_min($);
 sub round_time($);
@@ -59,7 +60,7 @@ my %stathash = (
 # デフォルトオプション
 my %opt = (
     'dir'      => undef,
-    'base'     => 0,
+    'offset'   => 0,
     'verbose'  => 0,
     'help'     => 0,
     'version'  => 0,
@@ -70,7 +71,7 @@ Getopt::Long::Configure(
     qw(bundling no_getopt_compat no_auto_abbrev no_ignore_case));
 GetOptions(
     'dir|d=s'    => \$opt{'dir'},
-    'base|b=i'   => \$opt{'base'},
+    'offset|o=i' => \$opt{'offset'},
     'verbose|v'  => \$opt{'verbose'},
     'help|h|?'   => \$opt{'help'},
     'version|V'  => \$opt{'version'},
@@ -105,7 +106,7 @@ sub usage()
     print << "EOF"
 Usage: $progname [options][file]
    -d,  --dir        Calcuration files from directory.
-   -b,  --base       Base start time(-1=8:00).
+   -o,  --offset     Offset start time(-1=8:00).
    -v,  --verbose    Output verbose message.
    -h,  --help       Display this help and exit.
    -V,  --version    Output version information and exit.
@@ -132,6 +133,21 @@ my %hconv = ( "00" => "24",
               "07" => "31",
               "08" => "32",
               "09" => "33",
+              "10" => "34",
+              "12" => "35",
+              "13" => "36",
+              "14" => "37",
+              "15" => "38",
+              "16" => "39",
+              "17" => "40",
+              "18" => "41",
+              "19" => "42",
+              "20" => "43",
+              "21" => "44",
+              "22" => "45",
+              "23" => "46",
+              "24" => "47",
+              "25" => "48",
 );
 
 # 分を変換(9:15 は 9.25)
@@ -143,45 +159,45 @@ my %mconv = ( "00" => "00",
 
 # 以下の値が範囲内のときに0.25ずつ加算していくとそれぞれの時間がでる
 # 通常時間(9:00〜18：00)
-my @commontime = (  9.25,  9.50,  9.75, 10.00, # 09:00〜10:00
-                   10.25, 10.50, 10.75, 11.00, # 10:00〜11:00
-                   11.25, 11.50, 11.75, 12.00, # 11:00〜12:00
-                   12.25, 12.50, 12.75, 13.00, # 12:00～13:00
-                   13.25, 13.50, 13.75, 14.00, # 13:00〜14:00
-                   14.25, 14.50, 14.75, 15.00, # 14:00〜15:00
-                   15.25, 15.50, 15.75, 16.00, # 15:00〜16:00
-                   16.25, 16.50, 16.75, 17.00, # 16:00〜17:00
-                   17.25, 17.50, 17.75, 18.00, # 17:00〜18:00
+my @commontime = (  9.25,  9.50,  9.75, 10.00,  # 09:00〜10:00
+                   10.25, 10.50, 10.75, 11.00,  # 10:00〜11:00
+                   11.25, 11.50, 11.75, 12.00,  # 11:00〜12:00
+                   12.25, 12.50, 12.75, 13.00,  # 12:00～13:00
+                   13.25, 13.50, 13.75, 14.00,  # 13:00〜14:00
+                   14.25, 14.50, 14.75, 15.00,  # 14:00〜15:00
+                   15.25, 15.50, 15.75, 16.00,  # 15:00〜16:00
+                   16.25, 16.50, 16.75, 17.00,  # 16:00〜17:00
+                   17.25, 17.50, 17.75, 18.00,  # 17:00〜18:00
 );
 
 # 残業時間(18:00〜22:00, 5:00〜8:30)
-my @overtime = ( 18.25, 18.50, 18.75, 19.00, # 18:00〜19:00
-                 19.25, 19.50, 19.75, 20.00, # 19:00〜20:00
-                 20.25, 20.50, 20.75, 21.00, # 20:00〜21:00
-                 21.25, 21.50, 21.75, 22.00, # 21:00〜22:00
-                 29.25, 29.50, 29.75, 30.00, # 05:00〜06:00
-                 30.25, 30.50, 30.75, 31.00, # 06:00〜07:00
-                 31.25, 31.50, 31.75, 32.00, # 07:00〜08:00
-                 32.25, 32.50, 32.75, 33.00  # 08:00〜09:00
+my @overtime = ( 18.25, 18.50, 18.75, 19.00,    # 18:00〜19:00
+                 19.25, 19.50, 19.75, 20.00,    # 19:00〜20:00
+                 20.25, 20.50, 20.75, 21.00,    # 20:00〜21:00
+                 21.25, 21.50, 21.75, 22.00,    # 21:00〜22:00
+                 29.25, 29.50, 29.75, 30.00,    # 05:00〜06:00
+                 30.25, 30.50, 30.75, 31.00,    # 06:00〜07:00
+                 31.25, 31.50, 31.75, 32.00,    # 07:00〜08:00
+                 32.25, 32.50, 32.75, 33.00     # 08:00〜09:00
 );
 
 # 深夜残業(22:00〜5:00)
-my @latetime = ( 22.25, 22.50, 22.75, 23.00, # 22:00〜23:00
-                 23.25, 23.50, 23.75, 24.00, # 23:00〜00:00
-                 24.25, 24.50, 24.75, 25.00, # 00:00～01:00
-                 25.25, 25.50, 25.75, 26.00, # 01:00〜02:00
-                 26.25, 26.50, 26.75, 27.00, # 02:00〜03:00
-                 27.25, 27.50, 27.75, 28.00, # 03:00〜04:00
-                 28.25, 28.50, 28.75, 29.00, # 04:00〜05:00
+my @latetime = ( 22.25, 22.50, 22.75, 23.00,    # 22:00〜23:00
+                 23.25, 23.50, 23.75, 24.00,    # 23:00〜00:00
+                 24.25, 24.50, 24.75, 25.00,    # 00:00～01:00
+                 25.25, 25.50, 25.75, 26.00,    # 01:00〜02:00
+                 26.25, 26.50, 26.75, 27.00,    # 02:00〜03:00
+                 27.25, 27.50, 27.75, 28.00,    # 03:00〜04:00
+                 28.25, 28.50, 28.75, 29.00,    # 04:00〜05:00
 );
 
 # 休憩時間
-my @resttime = ( 12.25, 12.50, 12.75, 13.00, # 12:00～13:00
-                 18.75, 19.00,               # 18:30～19:00
-                 21.75, 22.00,               # 21:30～22:00
-                 24.25, 24.50, 24.75, 25.00, # 00:00～01:00
-                 27.75, 28.00,               # 03:30～04:00
-                 32.75, 33.00,               # 08:30～09:00
+my @resttime = ( 12.25, 12.50, 12.75, 13.00,    # 12:00～13:00
+                 18.75, 19.00,                  # 18:30～19:00
+                 21.75, 22.00,                  # 21:30～22:00
+                 24.25, 24.50, 24.75, 25.00,    # 00:00～01:00
+                 27.75, 28.00,                  # 03:30～04:00
+                 32.75, 33.00,                  # 08:30～09:00
 );
 
 my $enc;
@@ -193,32 +209,39 @@ else {
 }
 
 my %grouphash;
+my %namehash;
 my @grouplst;
 my @namelst;
 my @filelst;
+my ($common, $over, $late, $rest);
+my ($common_sum, $over_sum, $late_sum);
+my ($holiday_sum, $holi_late_sum, $worktime);
 
 ##
 # ディレクトリ配下のファイルを処理
 #
 sub read_files($) {
     my $basedir = shift;
-    my $out;
     my $output;
+    my $filename;
+    my @datelst;
 
     my @dirs = recursive_dir($basedir);
     return unless (@dirs);
-    foreach my $dir (@dirs) {
+    foreach my $dir (sort @dirs) {
         print $dir . "\n";
         read_file($dir);
     }
 
+    my ($sec, $min, $hour, $mday, $mon, $year) = localtime(time);
+    my $datetime = sprintf("%04d%02d%02d%02d%02d%02d",
+                           $year + 1900, $mon + 1, $mday, $hour,
+                           $min, $sec);
+    # グループごとの集計
     foreach my $gname (@grouplst) {
-        my ($sec, $min, $hour, $mday, $mon, $year) = localtime(time);
-        my $filename = sprintf("%04d%02d%02d%02d%02d%02d_%s.csv",
-                               $year + 1900, $mon + 1, $mday, $hour,
-                               $min, $sec, encode($enc, $gname));
-        open $out, ">", $filename
-            or die print ": open file error[$gname.csv]: $!";
+        $filename = $datetime . "_" . encode($enc, $gname) . ".csv";
+        open my $out, ">", $filename
+            or die print ": open file error[$filename]: $!";
         $output = "月,グループ,名前,通常,残業,深夜,休日,休日+深夜,合計\n";
         foreach my $file (@filelst) {
             foreach my $group (@{$grouphash{$file}}) {
@@ -227,6 +250,35 @@ sub read_files($) {
                 $output .= $sep unless ($group eq ${$grouphash{$file}}[-1]);
             }
             $output .= "\n" if ($gname eq ${$grouphash{$file}}[1]);
+        }
+        print $out encode($enc, $output);
+        close($out);
+    }
+
+    # 名前ごとの集計(週単位に挑戦)
+    foreach my $name (@namelst) {
+        $filename = $datetime . "_" . encode($enc, $name) . ".csv";
+        open my $out, ">", $filename
+            or die print ": open file error[$filename]: $!";
+        $common_sum = $over_sum = $late_sum = $holiday_sum = 0.0;
+        $holi_late_sum = $worktime = 0.0;
+        $output = "日,通常,残業,深夜,休日,休日+深夜,休憩,合計\n";
+        foreach my $dt (@{$namehash{$name}}) {
+            $dt = encode($enc, $dt);
+            my ($date, $week, $begin, $end, $inf) = split(/,/, $dt);
+            push(@datelst, $date);
+
+            calc_sum($begin, $end, $inf);
+            if ($week eq encode($enc, '日')) {
+                my $interval = $datelst[0] . "-" . $datelst[-1];
+                $output .= $interval . $sep . $common_sum . $sep . $over_sum . $sep .
+                           $late_sum . $sep . $holiday_sum . $sep .
+                           $holi_late_sum . $sep . $worktime . "\n";
+
+                $common_sum = $over_sum = $late_sum = $holiday_sum = 0.0;
+                $holi_late_sum = $worktime = 0.0;
+                @datelst = ();
+            }
         }
         print $out encode($enc, $output);
         close($out);
@@ -241,10 +293,7 @@ sub read_file($)
     my $file = shift;
     my ($in, $out, $output);
     my ($date, $week, $begin, $end, $inf);
-    my ($common, $over, $late, $rest);
-    my ($common_sum, $over_sum, $late_sum);
-    my ($holiday_sum, $holi_late_sum);
-    my ($diff, $worktime);
+    my ($common, $over, $late);
     my ($group, $name, $person);
     my @diff;
     my @work;
@@ -271,7 +320,8 @@ sub read_file($)
     $output = "日,曜,始業時刻,終業時刻,通常,残業,深夜,休日,休日+深夜,休憩,合計\n";
 
     # 出勤時間
-    $basetime += $opt{'base'};
+    $opt{'offset'} %= 24 if (24 <= $opt{'offset'});
+    $basetime += $opt{'offset'};
 
     while (defined(my $line = <$in>)) {
 
@@ -297,78 +347,18 @@ sub read_file($)
         # 終業時間
         $end = conv_hour($end);
         $end = conv_min($end);
-        $output .= "$end" if (defined $end);
-        $output .= $sep;
-
-        # 通常時間
-        @diff = grep { !{map{$_,1}@resttime }->{$_}}@commontime;
-        $common = add_time($begin, $end, @diff);
-        if (defined $common) {
-            if ((defined $inf) && ($inf eq "出")) {
-                $holiday_sum += $common;
-            }
-            else {
-                $common_sum += $common;
-                $output .= "$common"
-            }
+        if (defined $end) {
+            $end += 24.0 if ($end < $begin);
+            $output .= "$end";
         }
         $output .= $sep;
 
-        # 残業時間
-        @diff = grep { !{map{$_,1}@resttime }->{$_}}@overtime;
-        $over = add_time($begin, $end, @diff);
-        if (defined $over) {
-            if ((defined $inf) && ($inf eq "出")) {
-                # 休日出勤の場合, 残業は関係ない
-                $holiday_sum += $over;
-            } else {
-                $over_sum += $over;
-                $output .= "$over";
-            }
-        }
-        $output .= $sep;
+        $output .= calc_sum($begin, $end, $inf);
+        $begin .= "";
+        $end .= "";
+        my $regist = $date . $sep . $week .$sep . $begin . $sep . $end . $sep . $inf;
+        push (@{$namehash{$name}}, $regist);
 
-        # 深夜残業
-        @diff = grep { !{map{$_,1}@resttime }->{$_}}@latetime;
-        $late = add_time($begin, $end, @diff);
-        if (defined $late) {
-            if ((defined $inf) && ($inf eq "出")) {
-                # 休日+深夜
-                $holi_late_sum += $late;
-            }
-            else {
-                $late_sum += $late;
-                $output .= "$late";
-            }
-        }
-        $output .= $sep;
-
-        # 休日出勤
-        if ((defined $inf) && ($inf eq "出")) {
-            $common += $over if (defined $over);
-            $output .= $common;
-        }
-        $output .= $sep;
-
-        # 休日出勤+深夜
-        if ((defined $inf) && ($inf eq "出")) {
-            $output .= $late if (defined $late);
-        }
-        $output .= $sep;
-
-        # 休憩時間取得
-        $rest = add_time($begin, $end, @resttime);
-        $output .= "$rest" if (defined $rest);
-        $output .= $sep;
-
-        # 勤務時間の計算
-        if (defined $begin && defined $end && defined $rest) {
-            $diff = ($end - $begin) - $rest;
-            $output .= $diff . "\n";
-            $worktime += $diff;
-        }
-        chomp($output);
-        $output .= "\n";
     } # while
     close $in;
 
@@ -391,12 +381,12 @@ sub read_file($)
 
     printf "%s\n", encode($enc, $output) if ($opt{'verbose'});
     printf "%s %s\n", encode($enc, $month), encode($enc, $name);
-    printf "|%s\t|%4d|\n", encode($enc, "通常"), $common_sum;
-    printf "|%s\t|%4d|\n", encode($enc, "残業"), $over_sum;
-    printf "|%s\t|%4d|\n", encode($enc, "深夜"), $late_sum;
-    printf "|%s\t|%4d|\n", encode($enc, "休日"), $holiday_sum;
-    printf "|%s\t|%4d|\n", encode($enc, "休日+"), $holi_late_sum;
-    printf "|%s\t|%4d|\n\n", encode($enc, "合計"), $worktime;
+    printf "|%s\t|%6.2f|\n", encode($enc, "通常"), $common_sum;
+    printf "|%s\t|%6.2f|\n", encode($enc, "残業"), $over_sum;
+    printf "|%s\t|%6.2f|\n", encode($enc, "深夜"), $late_sum;
+    printf "|%s\t|%6.2f|\n", encode($enc, "休日"), $holiday_sum;
+    printf "|%s\t|%6.2f|\n", encode($enc, "休日+"), $holi_late_sum;
+    printf "|%s\t|%6.2f|\n\n", encode($enc, "合計"), $worktime;
 
     # ファイルに出力
     $person .= $month;
@@ -408,6 +398,90 @@ sub read_file($)
         or die print ": open file error[$person]: $!";
     print $out encode($enc, $output);
     close $out;
+    $common_sum = $over_sum = $late_sum = $holiday_sum = 0.0;
+    $holi_late_sum = $worktime = 0.0;
+}
+
+##
+# 計算
+#
+sub calc_sum($$$) {
+    my $begin = shift;
+    my $end = shift;
+    my $inf = shift;
+    my ($diff, $rest);
+    my ($output);
+    my @diff;
+
+    # 通常時間
+    @diff = grep { !{map{$_,1}@resttime }->{$_}}@commontime;
+    $common = add_time($begin, $end, @diff);
+    if (defined $common) {
+        if ((defined $inf) && ($inf eq "出")) {
+            $holiday_sum += $common;
+        } else {
+            $common_sum += $common;
+            $output .= "$common"
+        }
+    }
+    $output .= $sep;
+
+    # 残業時間
+    @diff = grep { !{map{$_,1}@resttime }->{$_}}@overtime;
+    $over = add_time($begin, $end, @diff);
+    if (defined $over) {
+        if ((defined $inf) && ($inf eq "出")) {
+            # 休日出勤の場合, 残業は関係ない
+            $holiday_sum += $over;
+        } else {
+            $over_sum += $over;
+            $output .= "$over";
+        }
+    }
+    $output .= $sep;
+
+    # 深夜残業
+    @diff = grep { !{map{$_,1}@resttime }->{$_}}@latetime;
+    $late = add_time($begin, $end, @diff);
+    if (defined $late) {
+        if ((defined $inf) && ($inf eq "出")) {
+            # 休日+深夜
+            $holi_late_sum += $late;
+        } else {
+            $late_sum += $late;
+            $output .= "$late";
+        }
+    }
+    $output .= $sep;
+
+    # 休日出勤
+    if ((defined $inf) && ($inf eq "出")) {
+        $common += $over if (defined $over);
+        $output .= $common;
+    }
+    $output .= $sep;
+
+    # 休日出勤+深夜
+    if ((defined $inf) && ($inf eq "出")) {
+        $output .= $late if (defined $late);
+    }
+    $output .= $sep;
+
+    # 休憩時間取得
+    $rest = add_time($begin, $end, @resttime);
+    $output .= "$rest" if (defined $rest);
+    $output .= $sep;
+
+    # 勤務時間の計算
+    if (defined $begin && defined $end && defined $rest) {
+        $diff = ($end - $begin) - $rest;
+        $output .= $diff . "\n";
+        $worktime += $diff;
+    }
+    chomp($output);
+    $output .= "\n";
+
+    return $output;
 }
 
 ##
@@ -427,7 +501,7 @@ sub conv_hour($)
         return undef;
     }
     # 時
-    if (($basetime + $opt{'base'}) < $h) {
+    if (15 <= $opt{'offset'}) { # 00:00以上
         $h = $hconv{$h} if (exists $hconv{$h});
     }
     $result = $h . ":" . $m;
@@ -452,25 +526,23 @@ sub conv_min($)
         print "format error[$time]\n";
         return undef;
     }
-    # 分
-    $round = round_time($m); # 丸めちゃう
+    # 丸める
+    $round = round_time($m);
 
-    if (defined $mconv{$round}) {
-        if ($h < ($basetime + $opt{'base'})) {
-            $h = $basetime;
-            $m = 0;
-        }
-        else {
-            $m = $mconv{$round};
-        }
-        $result = $h . "." . $m
+    if ($h < $basetime) {
+        $h = $basetime;
+        $m = 0;
+    } else {
+        $m = $mconv{$round} if (exists $mconv{$round});
     }
-    else { # ここにくることはない
-        $result = $h . ".00";
-    }
+    $result = $h . "." . $m;
+
     return $result;
 }
 
+##
+# 丸める
+#
 sub round_time($)
 {
     my $time = shift;
@@ -486,7 +558,7 @@ sub round_time($)
 }
 
 ##
-# @timelstが範囲内の場合,時間を加算
+# 範囲内の場合,時間を加算
 #
 sub add_time($$@)
 {
@@ -496,9 +568,9 @@ sub add_time($$@)
     my $addtime = 0;
 
     return undef if (!defined $begin || !defined $end);
+    return undef if (($begin eq "") || ($end eq ""));
 
     foreach my $time (@timelst) {
-        $time += $opt{'base'};
         if ($begin <= ($time - 0.25) && $time <= $end) {
             $addtime += 0.25;
         }
@@ -508,7 +580,7 @@ sub add_time($$@)
 
 
 ##
-# 再帰
+# ディレクトリ配下のファイルをリストにして返す
 #
 sub recursive_dir($)
 {
@@ -562,7 +634,7 @@ caltime.pl [options][file]
 
  Options:
    -d,  --dir        Calcuration files from directory.
-   -b,  --base       Base start time(-1=8:00, default 0).
+   -o,  --offset     Offset start time(-1=8:00, default 0).
    -v,  --verbose    Output verbose message.
    -h,  --help       Display this help and exit.
    -V,  --version    Output version information and exit.
@@ -577,14 +649,14 @@ B<This program> calculation work time.
 
 Example:
 
-./caltime.pl -d \\Share\worktime
+./caltime.pl -d \\192.168.1.2\share\worktime\
 
 \\192.168.1.2\share\worktime\
- |-name1_dir\
- |        |-201307.csv
- |        |-201308.csv
+ |-name1\
+ |    |-201307.csv
+ |    |-201308.csv
  |
- |-name2_dir\
-          |-201307.csv
+ |-name2\
+      |-201307.csv
 
 =cut
