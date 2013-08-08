@@ -34,8 +34,9 @@ use File::Basename;
 use Getopt::Long;
 use utf8;
 use Encode qw/encode decode/;
+use File::Find;
 
-our $VERSION = do { my @r = ( q$Revision: 0.10 $ =~ /\d+/g ); sprintf "%d." . "%02d" x $#r, @r if (@r) };
+our $VERSION = do { my @r = ( q$Revision: 0.11 $ =~ /\d+/g ); sprintf "%d." . "%02d" x $#r, @r if (@r) };
 my $progname = basename($0);
 
 # プロトタイプ
@@ -47,6 +48,7 @@ sub conv_hour($);
 sub conv_min($);
 sub round_time($);
 sub add_time($$@);
+sub recursive_dir($);
 
 # ステータス
 my %stathash = (
@@ -112,6 +114,9 @@ EOF
 
 # セパレータ
 my $sep = ",";
+
+# 9:00から出勤
+my $basetime = 9.00;
 
 # 15分単位で集計
 my @unitmin = ( 00, 15, 30, 45 );
@@ -180,12 +185,11 @@ my @resttime = ( 12.25, 12.50, 12.75, 13.00, # 12:00～13:00
 );
 
 my $enc;
-my $utf8 = 'UTF-8';
 if ($^O eq "MSWin32") {
     $enc = 'Shift_JIS';
 }
 else {
-    $enc = $utf8;
+    $enc = 'UTF-8';
 }
 
 my %grouphash;
@@ -197,23 +201,25 @@ my @filelst;
 # ディレクトリ配下のファイルを処理
 #
 sub read_files($) {
-    my $dirs = shift;
-    my ($in, $out);
-    my $output = "";
+    my $basedir = shift;
+    my $out;
+    my $output;
 
-    opendir($in, $dirs)
-        or die print ": open dir error[$dirs]: $!";
-
-    foreach my $dir (readdir($in)) {
-        next if $dir =~ /^\.{1,2}$/;
-        next unless $dir =~ /^\d{6}\.csv$/;
+    my @dirs = recursive_dir($basedir);
+    return unless (@dirs);
+    foreach my $dir (@dirs) {
+        print $dir . "\n";
         read_file($dir);
     }
 
     foreach my $gname (@grouplst) {
-        open $out, ">$gname.csv"
+        my ($sec, $min, $hour, $mday, $mon, $year) = localtime(time);
+        my $filename = sprintf("%04d%02d%02d%02d%02d%02d_%s.csv",
+                               $year + 1900, $mon + 1, $mday, $hour,
+                               $min, $sec, encode($enc, $gname));
+        open $out, ">", $filename
             or die print ": open file error[$gname.csv]: $!";
-        $output = "月,グループ,名前,通常,残業,深夜,休日,休日+,合計\n";
+        $output = "月,グループ,名前,通常,残業,深夜,休日,休日+深夜,合計\n";
         foreach my $file (@filelst) {
             foreach my $group (@{$grouphash{$file}}) {
                 next unless ($gname eq ${$grouphash{$file}}[1]);
@@ -225,7 +231,6 @@ sub read_files($) {
         print $out encode($enc, $output);
         close($out);
     }
-    closedir($in);
 }
 
 ##
@@ -245,8 +250,9 @@ sub read_file($)
     my @work;
 
     return unless (defined $file);
+    #return unless $file =~ /^\d{6}\.csv$/;
 
-    open $in, "<$file"
+    open $in, "<", "$file"
         or die print ": open file error[$file]: $!";
 
     # 1行目
@@ -254,8 +260,8 @@ sub read_file($)
     (undef, $group, undef, $name) = split(/,/, $one);
     $group = "" unless (defined $group);
     $name = "" unless (defined $name);
-    $group = decode($utf8, $group);
-    $name = decode($utf8, $name);
+    $group = decode($enc, $group);
+    $name = decode($enc, $name);
     $name =~ s/\s+//g; # 空白削除
 
     # 2行目
@@ -263,6 +269,9 @@ sub read_file($)
 
     # ヘッダ
     $output = "日,曜,始業時刻,終業時刻,通常,残業,深夜,休日,休日+深夜,休憩,合計\n";
+
+    # 出勤時間
+    $basetime += $opt{'base'};
 
     while (defined(my $line = <$in>)) {
 
@@ -274,21 +283,21 @@ sub read_file($)
          undef, undef, undef, undef, undef, $end) = split(/,/, $line);
 
         next unless ((defined $date) || ($date eq ""));
+        $output .= "$date";
+        $output .= $sep;
+        $output .= "$week" if ((!defined $week) || ($week ne ""));
+        $output .= $sep;
 
         # 始業時間
         $begin = conv_hour($begin);
         $begin = conv_min($begin);
-        next unless defined $begin;
-        $output .= "$date" . $sep;
-        $output .= "$week" if ((!defined $week) || ($week ne ""));
-        $output .= $sep . "$begin";
+        $output .= "$begin" if (defined $begin);
         $output .= $sep;
 
         # 終業時間
         $end = conv_hour($end);
         $end = conv_min($end);
-        next unless defined $end;
-        $output .= "$end";
+        $output .= "$end" if (defined $end);
         $output .= $sep;
 
         # 通常時間
@@ -353,9 +362,13 @@ sub read_file($)
         $output .= $sep;
 
         # 勤務時間の計算
-        $diff = ($end - $begin) - $rest;
-        $output .= $diff . "\n";
-        $worktime += $diff;
+        if (defined $begin && defined $end && defined $rest) {
+            $diff = ($end - $begin) - $rest;
+            $output .= $diff . "\n";
+            $worktime += $diff;
+        }
+        chomp($output);
+        $output .= "\n";
     } # while
     close $in;
 
@@ -373,17 +386,11 @@ sub read_file($)
     @namelst = do { my %h; grep { !$h{$_}++ } @namelst};
     push(@filelst, $file);
     my ($month, undef, undef) = fileparse($file, ('.csv'));
-    decode($utf8, $month);
+    $month = decode($enc, $month);
     @{$grouphash{$file}} = ($month, $group, $name, $common_sum, $over_sum, $late_sum, $holiday_sum, $holi_late_sum, $worktime);
 
-    foreach my $g (@{$grouphash{$file}}) {
-        $output .= $g;
-        $output .= $sep unless ($g eq ${$grouphash{$file}}[-1]);
-    }
-    $output .= "\n";
-
     printf "%s\n", encode($enc, $output) if ($opt{'verbose'});
-    printf "%s %s\n", $month, encode($utf8, $name);
+    printf "%s %s\n", encode($enc, $month), encode($enc, $name);
     printf "|%s\t|%4d|\n", encode($enc, "通常"), $common_sum;
     printf "|%s\t|%4d|\n", encode($enc, "残業"), $over_sum;
     printf "|%s\t|%4d|\n", encode($enc, "深夜"), $late_sum;
@@ -392,10 +399,12 @@ sub read_file($)
     printf "|%s\t|%4d|\n\n", encode($enc, "合計"), $worktime;
 
     # ファイルに出力
-    $person .= $month . "_" . encode($utf8, $group) unless ($group eq "");
-    $person .= "_" . encode($utf8, $name) unless ($name eq "");
+    $person .= $month;
+    $person .= "_" . $group unless ($group eq "");
+    $person .= "_" . $name unless ($name eq "");
     $person .= ".csv";
-    open $out, ">$person"
+    $person = encode($enc, $person);
+    open $out, ">", "$person"
         or die print ": open file error[$person]: $!";
     print $out encode($enc, $output);
     close $out;
@@ -418,7 +427,7 @@ sub conv_hour($)
         return undef;
     }
     # 時
-    if ($h != (9 + $opt{'base'})) {
+    if (($basetime + $opt{'base'}) < $h) {
         $h = $hconv{$h} if (exists $hconv{$h});
     }
     $result = $h . ":" . $m;
@@ -447,7 +456,14 @@ sub conv_min($)
     $round = round_time($m); # 丸めちゃう
 
     if (defined $mconv{$round}) {
-        $result = $h . "." . $mconv{$round};
+        if ($h < ($basetime + $opt{'base'})) {
+            $h = $basetime;
+            $m = 0;
+        }
+        else {
+            $m = $mconv{$round};
+        }
+        $result = $h . "." . $m
     }
     else { # ここにくることはない
         $result = $h . ".00";
@@ -490,13 +506,27 @@ sub add_time($$@)
     return $addtime;
 }
 
-# 引数チェック
-# if ($#ARGV < 0) {
-#     print "no argument\n";
-#     exit($stathash{'EX_NG'});
-#}
+
+##
+# 再帰
+#
+sub recursive_dir($)
+{
+    my $dir = shift;
+    my @result = ();
+
+    find sub {
+        my $file = $_;
+        my $path = $File::Find::name;
+        push (@result, $path) if ($file =~ /^\d{6}\.csv$/);
+    }, $dir;
+
+    return @result;
+}
+
 
 if (defined($opt{'dir'})) {
+    $opt{'dirs'} = decode($enc, $opt{'dirs'});
     unless (-d $opt{'dir'}) {
         print "no directory: $opt{'dir'}";
         exit($stathash{'EX_NG'});
@@ -505,6 +535,12 @@ if (defined($opt{'dir'})) {
     read_files($opt{'dir'});
 }
 else {
+    # 引数チェック
+    if ($#ARGV < 0) {
+        print "no argument\n";
+        exit($stathash{'EX_NG'});
+    }
+
     unless (-f "$ARGV[0]") {
         print "no file: $ARGV[0]";
         exit($stathash{'EX_NG'});
@@ -543,7 +579,7 @@ Example:
 
 ./caltime.pl -d \\Share\worktime
 
-\\Share\worktime\
+\\192.168.1.2\share\worktime\
  |-name1_dir\
  |        |-201307.csv
  |        |-201308.csv
