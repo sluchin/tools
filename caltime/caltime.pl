@@ -33,7 +33,7 @@ use warnings;
 use File::Basename;
 use Getopt::Long;
 use utf8;
-use Encode qw/encode decode/;
+use Encode qw/encode decode _utf8_off/;
 use File::Find;
 
 our $VERSION = do { my @r = ( q$Revision: 0.12 $ =~ /\d+/g ); sprintf "%d." . "%02d" x $#r, @r if (@r) };
@@ -123,30 +123,12 @@ my $basetime = 9.00;
 my @unitmin = ( 00, 15, 30, 45 );
 
 # 時を変換(00:00 は 24.00)
-my %hconv = ( "00" => "24",
-              "01" => "25",
-              "02" => "26",
-              "03" => "27",
-              "04" => "28",
-              "05" => "29",
-              "06" => "30",
-              "07" => "31",
-              "08" => "32",
-              "09" => "33",
-              "10" => "34",
-              "12" => "35",
-              "13" => "36",
-              "14" => "37",
-              "15" => "38",
-              "16" => "39",
-              "17" => "40",
-              "18" => "41",
-              "19" => "42",
-              "20" => "43",
-              "21" => "44",
-              "22" => "45",
-              "23" => "46",
-              "24" => "47",
+my %hconv = ( "00" => "24", "01" => "25", "02" => "26", "03" => "27",
+              "04" => "28", "05" => "29", "06" => "30", "07" => "31",
+              "08" => "32", "09" => "33", "10" => "34", "12" => "35",
+              "13" => "36", "14" => "37", "15" => "38", "16" => "39",
+              "17" => "40", "18" => "41", "19" => "42", "20" => "43",
+              "21" => "44", "22" => "45", "23" => "46", "24" => "47",
               "25" => "48",
 );
 
@@ -269,7 +251,7 @@ sub read_files($) {
             push(@datelst, $date);
 
             calc_sum($begin, $end, $inf);
-            if ($week eq encode($enc, '日')) {
+            if (decode($enc, $week) eq '日') {
                 my $interval = $datelst[0] . "-" . $datelst[-1];
                 $output .= $interval . $sep . $common_sum . $sep . $over_sum . $sep .
                            $late_sum . $sep . $holiday_sum . $sep .
@@ -280,6 +262,14 @@ sub read_files($) {
                 @datelst = ();
             }
         }
+
+        if (@datelst) {
+            my $interval = $datelst[0] . "-" . $datelst[-1];
+            $output .= $interval . $sep . $common_sum . $sep . $over_sum . $sep .
+                       $late_sum . $sep . $holiday_sum . $sep .
+                       $holi_late_sum . $sep . $worktime . "\n";
+        }
+
         print $out encode($enc, $output);
         close($out);
     }
@@ -356,7 +346,7 @@ sub read_file($)
         $output .= calc_sum($begin, $end, $inf);
         $begin .= "";
         $end .= "";
-        my $regist = $date . $sep . $week .$sep . $begin . $sep . $end . $sep . $inf;
+        my $regist = $date . $sep . $week . $sep . $begin . $sep . $end . $sep . $inf;
         push (@{$namehash{$name}}, $regist);
 
     } # while
@@ -417,7 +407,7 @@ sub calc_sum($$$) {
     @diff = grep { !{map{$_,1}@resttime }->{$_}}@commontime;
     $common = add_time($begin, $end, @diff);
     if (defined $common) {
-        if ((defined $inf) && ($inf eq "出")) {
+        if ((defined $inf) && ($inf eq '出')) {
             $holiday_sum += $common;
         } else {
             $common_sum += $common;
@@ -430,7 +420,7 @@ sub calc_sum($$$) {
     @diff = grep { !{map{$_,1}@resttime }->{$_}}@overtime;
     $over = add_time($begin, $end, @diff);
     if (defined $over) {
-        if ((defined $inf) && ($inf eq "出")) {
+        if ((defined $inf) && ($inf eq '出')) {
             # 休日出勤の場合, 残業は関係ない
             $holiday_sum += $over;
         } else {
@@ -444,7 +434,7 @@ sub calc_sum($$$) {
     @diff = grep { !{map{$_,1}@resttime }->{$_}}@latetime;
     $late = add_time($begin, $end, @diff);
     if (defined $late) {
-        if ((defined $inf) && ($inf eq "出")) {
+        if ((defined $inf) && ($inf eq '出')) {
             # 休日+深夜
             $holi_late_sum += $late;
         } else {
@@ -455,14 +445,14 @@ sub calc_sum($$$) {
     $output .= $sep;
 
     # 休日出勤
-    if ((defined $inf) && ($inf eq "出")) {
+    if ((defined $inf) && ($inf eq '出')) {
         $common += $over if (defined $over);
         $output .= $common;
     }
     $output .= $sep;
 
     # 休日出勤+深夜
-    if ((defined $inf) && ($inf eq "出")) {
+    if ((defined $inf) && ($inf eq '出')) {
         $output .= $late if (defined $late);
     }
     $output .= $sep;
