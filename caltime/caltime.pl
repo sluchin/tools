@@ -202,7 +202,7 @@ sub read_files($) {
                 my ($date, $week, $begin, $end, $inf) = split(/,/, $n);
                 push(@datelst, $date);
 
-                calc_sum($begin, $end, encode($enc, $inf));
+                calc_sum($begin, $end, $inf eq '出' ? 1 : 0);
                 if ($week eq '日') {
                     $interval = encode($enc, $datelst[0]) . "-" .
                                 encode($enc, $datelst[-1]);
@@ -296,7 +296,7 @@ sub read_file($) {
         $output .= sprintf "%02.2f", $end if (defined $end);
         $output .= $sep;
 
-        $output .= calc_sum($begin, $end, encode($enc, $inf));
+        $output .= calc_sum($begin, $end, $inf eq '出' ? 1 : 0);
         $begin .= "";
         $end .= "";
         my $regist = $date . $sep . $week . $sep . $begin . $sep . $end . $sep . $inf;
