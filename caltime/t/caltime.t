@@ -83,7 +83,7 @@ foreach my $t (@test_calc_sum) {
 }
 
 foreach my $t (@test_calc_sum) {
-    my $output = calc_sum($t->[0], $t->[1], '出');
+    my $output = calc_sum($t->[0], $t->[1], 1);
     printf "%02.2f-%02.2f\n",$t->[0], $t->[1];
     is($output, $t->[3]);
 }

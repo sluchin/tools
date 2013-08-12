@@ -82,7 +82,7 @@ our ($holiday_sum, $holi_late_sum, $worktime);
 sub calc_sum {
     my $begin = shift;
     my $end = shift;
-    my $inf = shift;
+    my $holiday = shift;
     my ($common, $over, $late, $rest);
     my ($diff, $output);
     my @diff;
@@ -91,7 +91,7 @@ sub calc_sum {
     @diff = grep { !{map{$_,1}@resttime }->{$_}}@commontime;
     $common = add_time($begin, $end, @diff);
     if (defined $common) {
-        if ((defined $inf) && ($inf eq '出')) {
+        if ($holiday) {
             $holiday_sum += $common;
         } else {
             $common_sum += $common;
@@ -104,7 +104,7 @@ sub calc_sum {
     @diff = grep { !{map{$_,1}@resttime }->{$_}}@overtime;
     $over = add_time($begin, $end, @diff);
     if (defined $over) {
-        if ((defined $inf) && ($inf eq '出')) {
+        if ($holiday) {
             # 休日出勤の場合, 残業は関係ない
             $holiday_sum += $over;
         } else {
@@ -118,7 +118,7 @@ sub calc_sum {
     @diff = grep { !{map{$_,1}@resttime }->{$_}}@latetime;
     $late = add_time($begin, $end, @diff);
     if (defined $late) {
-        if ((defined $inf) && ($inf eq '出')) {
+        if ($holiday) {
             # 休日+深夜
             $holi_late_sum += $late;
         } else {
@@ -129,14 +129,14 @@ sub calc_sum {
     $output .= $sep;
 
     # 休日出勤
-    if ((defined $inf) && ($inf eq '出')) {
+    if ($holiday) {
         $common += $over if (defined $over);
         $output .= $common;
     }
     $output .= $sep;
 
     # 休日出勤+深夜
-    if ((defined $inf) && ($inf eq '出')) {
+    if ($holiday) {
         $output .= $late if (defined $late);
     }
     $output .= $sep;
