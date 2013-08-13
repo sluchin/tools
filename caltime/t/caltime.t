@@ -77,13 +77,13 @@ my @test_conv_hour =
 plan tests => scalar @test_calc_sum * 2 + scalar @test_conv_hour;
 
 foreach my $t (@test_calc_sum) {
-    my $output = calc_sum($t->[0], $t->[1], '');
+    my $output = calc_sum($t->[0], $t->[1], 0, '');
     printf "%02.2f-%02.2f\n",$t->[0], $t->[1];
     is($output, $t->[2]);
 }
 
 foreach my $t (@test_calc_sum) {
-    my $output = calc_sum($t->[0], $t->[1], 1);
+    my $output = calc_sum($t->[0], $t->[1], 0, 1);
     printf "%02.2f-%02.2f\n",$t->[0], $t->[1];
     is($output, $t->[3]);
 }

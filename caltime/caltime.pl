@@ -35,7 +35,7 @@ use Getopt::Long;
 use utf8;
 use Encode qw/encode decode/;
 
-our $VERSION = do { my @r = ( q$Revision: 0.13 $ =~ /\d+/g );
+our $VERSION = do { my @r = ( q$Revision: 0.14 $ =~ /\d+/g );
                     sprintf "%d." . "%02d" x $#r, @r if (@r) };
 
 my $progname = basename($0);
@@ -202,7 +202,7 @@ sub read_files($) {
                 my ($date, $week, $begin, $end, $inf) = split(/,/, $n);
                 push(@datelst, $date);
 
-                calc_sum($begin, $end, $inf eq '出' ? 1 : 0);
+                calc_sum($begin, $end, $opt{'offset'}, $inf eq '出' ? 1 : 0);
                 if ($week eq '日') {
                     $interval = encode($enc, $datelst[0]) . "-" .
                                 encode($enc, $datelst[-1]);
@@ -246,7 +246,7 @@ sub read_file($) {
     my @work;
 
     return unless (defined $file);
-    return unless $file =~ /\d{6}\.csv$/;
+    return unless basename($file) =~ /\d{6}\.csv$/;
 
     open $in, "<", "$file"
         or die print ": open file error[$file]: $!";
@@ -296,7 +296,7 @@ sub read_file($) {
         $output .= sprintf "%02.2f", $end if (defined $end);
         $output .= $sep;
 
-        $output .= calc_sum($begin, $end, $inf eq '出' ? 1 : 0);
+        $output .= calc_sum($begin, $end, $opt{'offset'},  $inf eq '出' ? 1 : 0);
         $begin .= "";
         $end .= "";
         my $regist = $date . $sep . $week . $sep . $begin . $sep . $end . $sep . $inf;
@@ -339,9 +339,8 @@ sub read_file($) {
     $holi_late_sum = $worktime = 0.0;
 }
 
-if ($opt{'debug'}) {
-    print "@INC\n";
-}
+
+print "@INC\n" if ($opt{'debug'});
 
 if ($opt{'version'}) {
     print_version();

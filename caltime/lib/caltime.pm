@@ -20,34 +20,16 @@ our @EXPORT = qw(calc_sum conv_hour conv_min
                  $sep $basetime $common_sum $over_sum $late_sum
                  $holiday_sum $holi_late_sum $worktime);
 
+# セパレータ
+our $sep = ",";
+
+# 9:00から出勤
+our $basetime = 9.00;
+
 # 15分単位で集計
 my @unitmin = ( 00, 15, 30, 45 );
 
-# 以下の値が範囲内のときに0.25ずつ加算していくとそれぞれの時間がでる
-# 通常時間(9:00〜18：00)
-my @commontime = (  9.25,  9.50,  9.75, 10.00,  # 09:00〜10:00
-                   10.25, 10.50, 10.75, 11.00,  # 10:00〜11:00
-                   11.25, 11.50, 11.75, 12.00,  # 11:00〜12:00
-                   12.25, 12.50, 12.75, 13.00,  # 12:00～13:00
-                   13.25, 13.50, 13.75, 14.00,  # 13:00〜14:00
-                   14.25, 14.50, 14.75, 15.00,  # 14:00〜15:00
-                   15.25, 15.50, 15.75, 16.00,  # 15:00〜16:00
-                   16.25, 16.50, 16.75, 17.00,  # 16:00〜17:00
-                   17.25, 17.50, 17.75, 18.00,  # 17:00〜18:00
-);
-
-# 残業時間(18:00〜22:00, 5:00〜8:30)
-my @overtime = ( 18.25, 18.50, 18.75, 19.00,    # 18:00〜19:00
-                 19.25, 19.50, 19.75, 20.00,    # 19:00〜20:00
-                 20.25, 20.50, 20.75, 21.00,    # 20:00〜21:00
-                 21.25, 21.50, 21.75, 22.00,    # 21:00〜22:00
-                 29.25, 29.50, 29.75, 30.00,    # 05:00〜06:00
-                 30.25, 30.50, 30.75, 31.00,    # 06:00〜07:00
-                 31.25, 31.50, 31.75, 32.00,    # 07:00〜08:00
-                 32.25, 32.50, 32.75, 33.00     # 08:00〜09:00
-);
-
-# 深夜残業(22:00〜5:00)
+# 深夜残業(22:00〜5:00) ※休憩時間も含む
 my @latetime = ( 22.25, 22.50, 22.75, 23.00,    # 22:00〜23:00
                  23.25, 23.50, 23.75, 24.00,    # 23:00〜00:00
                  24.25, 24.50, 24.75, 25.00,    # 00:00～01:00
@@ -66,29 +48,58 @@ my @resttime = ( 12.25, 12.50, 12.75, 13.00,    # 12:00～13:00
                  32.75, 33.00,                  # 08:30～09:00
 );
 
-# セパレータ
-our $sep = ",";
-
-# 9:00から出勤
-our $basetime = 9.00;
-
 # 合計時間
 our ($common_sum, $over_sum, $late_sum);
 our ($holiday_sum, $holi_late_sum, $worktime);
 
 ##
+# 通常時間を算出
+#
+sub common_time {
+    my $offset = shift;
+    my @result;
+    my $time = $basetime + $offset;
+    my $add = 0;
+    while ($add < 8.0) {
+        $time += 0.25;
+        unless (grep {$_ == $time} @resttime) {
+            $add += 0.25;
+            push(@result, $time);
+        }
+    }
+    return @result;
+}
+
+##
+# 残業時間を算出
+#
+sub over_time {
+    my @common = @_;
+    my @result;
+    my $add = 0;
+    my $time = $common[-1];
+    while ($add < (24.0 - 8.0)) {
+        $time += 0.25;
+        unless (grep {$_ == $time} @resttime) {
+            $add += 0.25;
+            push(@result, $time);
+        }
+    }
+    return @result;
+}
+
+##
 # 計算
 #
 sub calc_sum {
-    my $begin = shift;
-    my $end = shift;
-    my $holiday = shift;
+    my ($begin, $end, $offset, $holiday) = @_;
     my ($common, $over, $late, $rest);
     my ($diff, $output);
     my @diff;
 
     # 通常時間
-    @diff = grep { !{map{$_,1}@resttime }->{$_}}@commontime;
+    my @commontime = common_time($offset);
+    @diff = grep { !{map{$_,1}@latetime }->{$_}}@commontime;
     $common = add_time($begin, $end, @diff);
     if (defined $common) {
         if ($holiday) {
@@ -101,7 +112,8 @@ sub calc_sum {
     $output .= $sep;
 
     # 残業時間
-    @diff = grep { !{map{$_,1}@resttime }->{$_}}@overtime;
+    my @overtime = over_time(@commontime);
+    @diff = grep { !{map{$_,1}@latetime }->{$_}}@overtime;
     $over = add_time($begin, $end, @diff);
     if (defined $over) {
         if ($holiday) {
