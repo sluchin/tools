@@ -241,7 +241,7 @@ sub read_file($) {
     my ($in, $out, $output);
     my ($date, $week, $begin, $end, $inf);
     my ($common, $over, $late);
-    my ($group, $name, $person);
+    my ($group, $name, $person, $sum, $debug);
     my @diff;
     my @work;
 
@@ -279,24 +279,32 @@ sub read_file($) {
          undef, undef, undef, undef, undef, $end) = split(/,/, $line);
 
         next unless ((defined $date) || ($date eq ""));
-        $output .= "$date";
+        $output .= $date;
         $output .= $sep;
-        $output .= "$week" if ((!defined $week) || ($week ne ""));
+        $output .= $week if ((!defined $week) || ($week ne ""));
         $output .= $sep;
+        $debug .= $date . $sep if ($opt{'debug'});
 
         # 始業時間
         $begin = conv_hour($begin, $opt{'offset'}) if (15 <= $opt{'offset'}); # 00:00以上
         $begin = conv_min($begin, $opt{'offset'});
-        $output .= sprintf "%02.2f", $begin if (defined $begin);
+        if (defined $begin) {
+            $debug .= sprintf("%02.2f", $begin) . $sep if ($opt{'debug'});
+            $output .= val2str($begin);
+        }
         $output .= $sep;
 
         # 終業時間
         $end = conv_hour($end, $opt{'offset'});
         $end = conv_min($end, $opt{'offset'});
-        $output .= sprintf "%02.2f", $end if (defined $end);
+        if (defined $end) {
+            $debug .= sprintf("%02.2f", $end) . $sep if ($opt{'debug'});
+            $output .= val2str($end);
+        }
         $output .= $sep;
-
-        $output .= calc_sum($begin, $end, $opt{'offset'},  $inf eq '出' ? 1 : 0);
+        $sum = calc_sum($begin, $end, $opt{'offset'},  $inf eq '出' ? 1 : 0);
+        $output .= $sum;
+        $debug .= $sum if ($opt{'debug'});
         $begin .= "";
         $end .= "";
         my $regist = $date . $sep . $week . $sep . $begin . $sep . $end . $sep . $inf;
@@ -322,6 +330,7 @@ sub read_file($) {
     $month = decode($enc, $month);
     @{$grouphash{$file}} = ($month, $group, $name, $common_sum, $over_sum, $late_sum, $holiday_sum, $holi_late_sum, $worktime);
 
+    print $debug if ($opt{'debug'});
     printf "%s\n", encode($enc, $output) if ($opt{'verbose'});
     print_result(encode($enc, $month), encode($enc, $name));
 
@@ -355,7 +364,7 @@ if ($opt{'help'}) {
 if (defined($opt{'dir'})) {
     $opt{'dirs'} = decode($enc, $opt{'dirs'});
     unless (-d $opt{'dir'}) {
-        print "no directory: $opt{'dir'}";
+        print "no directory: $opt{'dir'}\n";
         exit($stathash{'EX_NG'});
     }
     # ディレクトリ配下全てを処理する
@@ -369,7 +378,7 @@ else {
     }
 
     unless (-f "$ARGV[0]") {
-        print "no file: $ARGV[0]";
+        print "no file: $ARGV[0]\n";
         exit($stathash{'EX_NG'});
     }
     # ファイル読み込み処理する
