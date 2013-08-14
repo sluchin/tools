@@ -213,11 +213,10 @@ sub conv_hour {
         return undef;
     }
 
-    # 時
     $hconv = $h;
-    $h += 0;
-    for ( my $i = 0 ; $i < ( $basetime + $offset + 1 ) ; $i++ ) {
-        if ( $i == $h ) {
+    $offset += $basetime + 1;
+    for ( my $i = 0 ; $i < $offset ; $i++ ) {
+        if ( $i == ( $h + 0 ) ) {
             $hconv = sprintf( "%02d", $i + 24 );
             last;
         }
@@ -250,14 +249,16 @@ sub conv_min {
         return undef;
     }
 
-    # 丸める
-    $round = round_time($m);
-
-    if ( $h < ( $basetime + $offset ) ) {
-        $h = $basetime + $offset;
-        $m = 0;
+    if (defined $offset) {
+        if ( $h < ( $offset + $basetime ) ) {
+            $h = $basetime + $offset;
+            $m = 0;
+        }
     }
-    else {
+
+    unless ( ( $m + 0 ) != 0) {
+        # 丸める
+        $round = round_time($m);
         $m = $mconv{$round} if ( exists $mconv{$round} );
     }
     $result = $h . "." . $m;

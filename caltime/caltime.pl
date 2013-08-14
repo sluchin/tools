@@ -125,14 +125,47 @@ my %namehash;
 my @grouplst;
 my @namelst;
 my @filelst;
+my @datelst;
+
+##
+# 初期化
+#
+sub init {
+    $common_sum = $over_sum = $late_sum = $holiday_sum = 0.0;
+    $holi_late_sum = $worktime = 0.0;
+    @datelst = ();
+}
+
+##
+# 週単位の合計文字列
+#
+sub sum_weekly {
+    return
+        $datelst[0]
+      . "-"
+      . $datelst[-1]
+      . $sep
+      . $common_sum
+      . $sep
+      . $over_sum
+      . $sep
+      . $late_sum
+      . $sep
+      . $holiday_sum
+      . $sep
+      . $holi_late_sum
+      . $sep
+      . $worktime . "\n";
+}
 
 ##
 # 結果の表示
 #
 sub print_result {
-    my $date = shift;
-    my $name = shift;
-    printf "%s %s\n", $date, $name;
+    my ($name, $date) = @_;
+
+    $date = $datelst[0] . "-" . $datelst[-1] unless ( defined $date );
+    printf "%s %s\n", $date, encode( $enc, $name );
     printf "|%s\t|%6.2f|\n",   encode( $enc, "通常" ),  $common_sum;
     printf "|%s\t|%6.2f|\n",   encode( $enc, "残業" ),  $over_sum;
     printf "|%s\t|%6.2f|\n",   encode( $enc, "深夜" ),  $late_sum;
@@ -148,7 +181,6 @@ sub read_files {
     my $basedir = shift;
     my $output;
     my $filename;
-    my @datelst;
 
     my @dirs = recursive_dir($basedir);
     return unless (@dirs);
@@ -186,7 +218,7 @@ sub read_files {
         }
     }
 
-    # 名前ごとの集計(週単位に挑戦)
+    # 名前ごとの週単位集計
     if ( $opt{'weekly'} || !$opt{'group'} ) {
         foreach my $name (@namelst) {
             my $interval = "";
@@ -208,81 +240,27 @@ sub read_files {
                 # 連続していない月は, 一旦出力する
                 if (   $bmon ne ""
                     && $month ne ""
-                    && !( $month + 0 <= $bmon + 1 ) )
+                    && !( ($month + 0) <= ($bmon + 1) ) )
                 {
-                    $interval =
-                        encode( $enc, $datelst[0] ) . "-"
-                      . encode( $enc, $datelst[-1] );
-                    $output .=
-                        $interval
-                      . $sep
-                      . $common_sum
-                      . $sep
-                      . $over_sum
-                      . $sep
-                      . $late_sum
-                      . $sep
-                      . $holiday_sum
-                      . $sep
-                      . $holi_late_sum
-                      . $sep
-                      . $worktime . "\n";
-                    print_result( $interval, encode( $enc, $name ) );
-
-                    $common_sum = $over_sum = $late_sum = $holiday_sum = 0.0;
-                    $holi_late_sum = $worktime = 0.0;
-                    @datelst = ();
+                    $output .= sum_weekly();
+                    print_result( $name );
+                    init();
                 }
 
                 push( @datelst, $date );
                 calc_sum( $begin, $end, $opt{'offset'}, $inf eq '出' ? 1 : 0 );
 
                 if ( $week eq '日' ) {
-                    $interval =
-                        encode( $enc, $datelst[0] ) . "-"
-                      . encode( $enc, $datelst[-1] );
-                    $output .=
-                        $interval
-                      . $sep
-                      . $common_sum
-                      . $sep
-                      . $over_sum
-                      . $sep
-                      . $late_sum
-                      . $sep
-                      . $holiday_sum
-                      . $sep
-                      . $holi_late_sum
-                      . $sep
-                      . $worktime . "\n";
-                    print_result( $interval, encode( $enc, $name ) );
-
-                    $common_sum = $over_sum = $late_sum = $holiday_sum = 0.0;
-                    $holi_late_sum = $worktime = 0.0;
-                    @datelst = ();
+                    $output .= sum_weekly();
+                    print_result( $name );
+                    init();
                 }
                 $bmon = $month;
             }
 
             if (@datelst) {
-                $interval =
-                    encode( $enc, $datelst[0] ) . "-"
-                  . encode( $enc, $datelst[-1] );
-                $output .=
-                    $interval
-                  . $sep
-                  . $common_sum
-                  . $sep
-                  . $over_sum
-                  . $sep
-                  . $late_sum
-                  . $sep
-                  . $holiday_sum
-                  . $sep
-                  . $holi_late_sum
-                  . $sep
-                  . $worktime . "\n";
-                print_result( $interval, encode( $enc, $name ) );
+                $output .= sum_weekly();
+                print_result( $name );
             }
             printf "%s\n", encode( $enc, $output ) if ( $opt{'verbose'} );
 
@@ -298,8 +276,8 @@ sub read_files {
 sub read_file {
     my $file = shift;
     my ( $in,     $out,  $output );
-    my ( $date,   $week, $begin, $end, $inf );
-    my ( $common, $over, $late );
+    my ( $date,   $week, $begin, $end, $inf, $comment );
+    my ( $common, $over, $late,  $offset );
     my ( $group,  $name, $person, $sum, $debug );
     my @diff;
     my @work;
@@ -327,16 +305,16 @@ sub read_file {
 "日,曜,始業時刻,終業時刻,通常,残業,深夜,休日,休日+深夜,休憩,合計\n";
 
     # 出勤時間
-    $opt{'offset'} %= 24 if ( 24 <= $opt{'offset'} );
-
+    init();
     while ( defined( my $line = <$in> ) ) {
 
+        $offset = $opt{'offset'} % 24;
         chomp($line);
         next if ( $line eq "" );
         $line = decode( $enc, $line );
 
         (
-            $date, $week, $begin, $inf,  undef, undef,
+            $date, $week, $begin, $inf,  undef, $comment,
             undef, undef, undef,  undef, $end
         ) = split( /,/, $line );
 
@@ -347,10 +325,23 @@ sub read_file {
         $output .= $sep;
         $debug .= $date . $sep if ( $opt{'debug'} );
 
+        # 始業時刻のコメントの先頭に時刻フォーマットの文字列がある場合,
+        # その時刻からオフセット値を求める
+        if ( defined $comment ) {
+            if ( $comment =~ /^\d{2}:\d{2}/ ) {
+                $comment = substr( $comment, 0, 5 );
+                $comment = conv_min( $comment );
+                print "$comment\n" if ( $opt{'debug'});
+                if ($basetime < $comment) {
+                    $offset = $comment - $basetime;
+                }
+            }
+        }
+
         # 始業時間
-        $begin = conv_hour( $begin, $opt{'offset'} )
-          if ( 15 <= $opt{'offset'} );    # 00:00以上
-        $begin = conv_min( $begin, $opt{'offset'} );
+        $begin = conv_hour( $begin, $offset )
+          if ( 15 <= $offset );    # 00:00以上
+        $begin = conv_min( $begin, $offset );
         if ( defined $begin ) {
             $debug .= sprintf( "%2.2f", $begin ) . $sep if ( $opt{'debug'} );
             $output .= val2str($begin);
@@ -358,14 +349,14 @@ sub read_file {
         $output .= $sep;
 
         # 終業時間
-        $end = conv_hour( $end, $opt{'offset'} );
-        $end = conv_min( $end, $opt{'offset'} );
+        $end = conv_hour( $end, $offset );
+        $end = conv_min( $end, $offset );
         if ( defined $end ) {
-            $debug .= sprintf( "%02.2f", $end ) . $sep if ( $opt{'debug'} );
+            $debug .= sprintf( "%2.2f", $end ) . $sep if ( $opt{'debug'} );
             $output .= val2str($end);
         }
         $output .= $sep;
-        $sum = calc_sum( $begin, $end, $opt{'offset'}, $inf eq '出' ? 1 : 0 );
+        $sum = calc_sum( $begin, $end, $offset, $inf eq '出' ? 1 : 0 );
         $output .= $sum;
         $debug  .= $sum if ( $opt{'debug'} );
         $begin  .= "";
@@ -376,13 +367,6 @@ sub read_file {
 
     }    # while
     close $in;
-
-    $common_sum    = 0.0 unless ( defined $common_sum );
-    $over_sum      = 0.0 unless ( defined $over_sum );
-    $late_sum      = 0.0 unless ( defined $late_sum );
-    $holiday_sum   = 0.0 unless ( defined $holiday_sum );
-    $holi_late_sum = 0.0 unless ( defined $holi_late_sum );
-    $worktime      = 0.0 unless ( defined $worktime );
 
     # リスト,ハッシュに保存
     push( @grouplst, $group );
@@ -406,7 +390,7 @@ sub read_file {
 
     print $debug . "\n" if ( $opt{'debug'} );
     printf "%s\n", encode( $enc, $output ) if ( $opt{'verbose'} );
-    print_result( encode( $enc, $month ), encode( $enc, $name ) );
+    print_result( $name, $month );
 
     # ファイルに出力
     $person .= $month;
@@ -418,8 +402,7 @@ sub read_file {
       or die print ": open file error[$person]: $!";
     print $out encode( $enc, $output );
     close $out;
-    $common_sum = $over_sum = $late_sum = $holiday_sum = 0.0;
-    $holi_late_sum = $worktime = 0.0;
+    init();
 }
 
 print "@INC\n" if ( $opt{'debug'} );
