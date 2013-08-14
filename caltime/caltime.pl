@@ -35,7 +35,7 @@ use Getopt::Long;
 use utf8;
 use Encode qw/encode decode/;
 
-our $VERSION = do { my @r = ( q$Revision: 0.14 $ =~ /\d+/g );
+our $VERSION = do { my @r = ( q$Revision: 0.15 $ =~ /\d+/g );
                     sprintf "%d." . "%02d" x $#r, @r if (@r) };
 
 my $progname = basename($0);
@@ -44,17 +44,29 @@ BEGIN { $progpath = dirname($0); }
 use lib "$progpath/lib";
 use caltime;
 
-# プロトタイプ
-sub print_version();
-sub usage();
-sub read_files($);
-sub read_file($);
-
 # ステータス
 my %stathash = (
     'EX_OK' => 0, # 正常終了
     'EX_NG' => 1, # 異常終了
 );
+
+##
+# ヘルプ表示
+#
+sub usage {
+    print << "EOF"
+Usage: $progname [options] [-d directory|file]
+ Options:
+   -d,  --dir=directory     Calcuration files from directory.
+   -o,  --offset            Offset start time(-1=8:00).
+   -g,  --group             Calcuration for group.
+   -w,  --weekly            Calcuration weekly.
+   -D,  --debug             Debug.
+   -v,  --verbose           Output verbose message.
+   -h,  --help              Display this help and exit.
+   -V,  --version           Output version information and exit.
+EOF
+}
 
 # デフォルトオプション
 my %opt = (
@@ -85,31 +97,11 @@ GetOptions(
 ##
 # バージョン情報表示
 #
-sub print_version()
-{
+sub print_version {
     print "$progname version " . $VERSION . "\n" .
           "  running on Perl version " .
           join(".",
               map { $_||=0; $_*1 } ($] =~ /(\d)\.(\d{3})(\d{3})?/ )) . "\n";
-}
-
-##
-# ヘルプ表示
-#
-sub usage()
-{
-    print << "EOF"
-Usage: $progname [options] [-d directory|file]
- Options:
-   -d,  --dir=directory     Calcuration files from directory.
-   -o,  --offset            Offset start time(-1=8:00).
-   -g,  --group             Calcuration for group.
-   -w,  --weekly            Calcuration weekly.
-   -D,  --debug             Debug.
-   -v,  --verbose           Output verbose message.
-   -h,  --help              Display this help and exit.
-   -V,  --version           Output version information and exit.
-EOF
 }
 
 # セパレータ
@@ -135,7 +127,7 @@ my @filelst;
 ##
 # 結果の表示
 #
-sub print_result($$) {
+sub print_result {
     my $date = shift;
     my $name = shift;
     printf "%s %s\n", $date, $name;
@@ -150,7 +142,7 @@ sub print_result($$) {
 ##
 # ディレクトリ配下のファイルを処理
 #
-sub read_files($) {
+sub read_files {
     my $basedir = shift;
     my $output;
     my $filename;
@@ -189,9 +181,10 @@ sub read_files($) {
     }
 
     # 名前ごとの集計(週単位に挑戦)
-    if ($opt{'weekly'}) {
+    if ($opt{'weekly'} || !$opt{'group'}) {
         foreach my $name (@namelst) {
             my $interval = "";
+            my $bmon = "";
             $filename = $datetime . "_" . encode($enc, $name) . ".csv";
             open my $out, ">", $filename
                 or die print ": open file error[$filename]: $!";
@@ -199,10 +192,26 @@ sub read_files($) {
             $holi_late_sum = $worktime = 0.0;
             $output = "日,通常,残業,深夜,休日,休日+深夜,休憩,合計\n";
             foreach my $n (@{$namehash{$name}}) {
-                my ($date, $week, $begin, $end, $inf) = split(/,/, $n);
-                push(@datelst, $date);
+                my ($date, $week, $begin, $end, $inf) = split /,/, $n;
+                my (undef, $month, undef) = split /\//, $date;
+                if (($month = $month || "") eq "") {
+                    printf "format error[%s]\n", $month;
+                }
 
+                # 連続していない月は, 一旦出力する
+                if ($bmon ne "" && $month ne "" && !($month+0 <= $bmon+1)) {
+                    $interval = encode($enc, $datelst[0]) . "-" .
+                                encode($enc, $datelst[-1]);
+                    print_result($interval, encode($enc, $name));
+
+                    $common_sum = $over_sum = $late_sum = $holiday_sum = 0.0;
+                    $holi_late_sum = $worktime = 0.0;
+                    @datelst = ();
+                }
+
+                push(@datelst, $date);
                 calc_sum($begin, $end, $opt{'offset'}, $inf eq '出' ? 1 : 0);
+
                 if ($week eq '日') {
                     $interval = encode($enc, $datelst[0]) . "-" .
                                 encode($enc, $datelst[-1]);
@@ -216,6 +225,7 @@ sub read_files($) {
                     $holi_late_sum = $worktime = 0.0;
                     @datelst = ();
                 }
+                $bmon = $month;
             }
 
             if (@datelst) {
@@ -236,7 +246,7 @@ sub read_files($) {
 ##
 # ファイルを処理
 #
-sub read_file($) {
+sub read_file {
     my $file = shift;
     my ($in, $out, $output);
     my ($date, $week, $begin, $end, $inf);
@@ -289,7 +299,7 @@ sub read_file($) {
         $begin = conv_hour($begin, $opt{'offset'}) if (15 <= $opt{'offset'}); # 00:00以上
         $begin = conv_min($begin, $opt{'offset'});
         if (defined $begin) {
-            $debug .= sprintf("%02.2f", $begin) . $sep if ($opt{'debug'});
+            $debug .= sprintf("%2.2f", $begin) . $sep if ($opt{'debug'});
             $output .= val2str($begin);
         }
         $output .= $sep;
@@ -330,7 +340,7 @@ sub read_file($) {
     $month = decode($enc, $month);
     @{$grouphash{$file}} = ($month, $group, $name, $common_sum, $over_sum, $late_sum, $holiday_sum, $holi_late_sum, $worktime);
 
-    print $debug if ($opt{'debug'});
+    print $debug . "\n" if ($opt{'debug'});
     printf "%s\n", encode($enc, $output) if ($opt{'verbose'});
     print_result(encode($enc, $month), encode($enc, $name));
 
@@ -347,7 +357,6 @@ sub read_file($) {
     $common_sum = $over_sum = $late_sum = $holiday_sum = 0.0;
     $holi_late_sum = $worktime = 0.0;
 }
-
 
 print "@INC\n" if ($opt{'debug'});
 
