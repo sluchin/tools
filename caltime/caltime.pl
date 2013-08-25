@@ -52,6 +52,18 @@ my %stathash = (
 );
 
 ##
+# バージョン情報表示
+#
+sub print_version {
+    print "$progname version "
+      . $VERSION . "\n"
+      . "  running on Perl version "
+      . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
+      . "\n";
+    exit( $stathash{'EX_OK'} );
+}
+
+##
 # ヘルプ表示
 #
 sub usage {
@@ -93,18 +105,10 @@ GetOptions(
     'debug|D'    => \$opt{'debug'},
     'help|h|?'   => \$opt{'help'},
     'version|V'  => \$opt{'version'},
-) or usage();
+) or usage() and exit( $stathash{'EX_NG'} );
 
-##
-# バージョン情報表示
-#
-sub print_version {
-    print "$progname version "
-      . $VERSION . "\n"
-      . "  running on Perl version "
-      . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
-      . "\n";
-}
+usage() and exit( $stathash{'EX_OK'} ) if ( $opt{'help'} );
+print_version() if ( $opt{'version'} );
 
 # セパレータ
 our $sep = ",";
@@ -201,7 +205,7 @@ sub read_files {
         foreach my $gname (@grouplst) {
             $filename = $datetime . "_" . encode( $enc, $gname ) . ".csv";
             open my $out, ">", $filename
-              or die print ": open file error[$filename]: $!";
+              or die "open[$filename]: $!";
             $output =
 "月,グループ,名前,通常,残業,深夜,休日,休日+深夜,合計\n";
             foreach my $file (@filelst) {
@@ -225,7 +229,7 @@ sub read_files {
             my $bmon     = "";
             $filename = $datetime . "_" . encode( $enc, $name ) . ".csv";
             open my $out, ">", $filename
-              or die print ": open file error[$filename]: $!";
+              or die "open[$filename]: $!";
             $common_sum = $over_sum = $late_sum = $holiday_sum = 0.0;
             $holi_late_sum = $worktime = 0.0;
             $output =
@@ -286,7 +290,7 @@ sub read_file {
     return unless basename($file) =~ /\d{6}\.csv$/;
 
     open $in, "<", "$file"
-      or die print ": open file error[$file]: $!";
+      or die "open[$file]: $!";
 
     # 1行目
     my $one = <$in>;
@@ -399,23 +403,13 @@ sub read_file {
     $person .= ".csv";
     $person = encode( $enc, $person );
     open $out, ">", "$person"
-      or die print ": open file error[$person]: $!";
+      or die "open[$person]: $!";
     print $out encode( $enc, $output );
     close $out;
     init();
 }
 
 print "@INC\n" if ( $opt{'debug'} );
-
-if ( $opt{'version'} ) {
-    print_version();
-    exit( $stathash{'EX_OK'} );
-}
-
-if ( $opt{'help'} ) {
-    usage();
-    exit( $stathash{'EX_OK'} );
-}
 
 if ( defined( $opt{'dir'} ) ) {
     $opt{'dirs'} = decode( $enc, $opt{'dirs'} );
