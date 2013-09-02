@@ -30,7 +30,7 @@ my %opt = (
     'cid'     => 'ssn00265',
     'id'      => 'higashit',
     'pw'      => 'higashit',
-    'month'   => '201308',
+    'month'   => undef,
     'ssl'     => 0,
     'port'    => 80,
     'debug'   => 1,
@@ -87,6 +87,22 @@ GetOptions(
 
 usage() and exit( $stathash{'EX_OK'} ) if ( $opt{'help'} );
 print_version() if ( $opt{'version'} );
+
+my ($enc, $dec);
+if ( $^O eq "MSWin32" ) {
+    $enc = 'Shift_JIS';
+    $dec = 'Shift_JIS';
+}
+else {
+    $enc = 'UTF-8';
+    $dec = 'Shift_JIS';
+}
+
+unless (defined $opt{'month'}) {
+    my ( undef, undef, undef, undef, $mon, $year ) = localtime(time);
+    $opt{'month'} = sprintf("%04d%02d", $year + 1900, $mon + 1);
+}
+print $opt{'month'} . "\n";
 
 my ( $header, $body );
 my $dest = "h1.teki-pakinets.com";
@@ -179,11 +195,11 @@ else {
 printf "\n%s bytes write.\n", bytes::length($msg);
 print $msg;
 
-my $read_buffer;
+my $read_buffer = "";
 while (1) {
-    my $buf;
+    my $buf = "";
     if ($opt{'ssl'}) {
-        $buf= Net::SSLeay::read( $ssl, 16384 ) || "";
+        $buf = Net::SSLeay::read( $ssl, 16384 ) || "";
         die_if_ssl_error("ssl read");
     }
     else {
@@ -197,24 +213,28 @@ while (1) {
     my $len = bytes::length($buf);
     last if ( !$len || $buf eq "");
     printf "\n%s bytes read.\n", $len;
-    print $buf;
-    $read_buffer .= $buf;
+    print encode($enc, decode($dec, $buf));
+    $read_buffer .= decode($dec, $buf);
 }
 my @msg = split m/\r\n\r\n/, $read_buffer, 2;    # ヘッダ分割
 my @body = split m/\r\n/, $msg[1], 2 if (defined $msg[1]);
 
-printf "%d bytes read.\n", hex($body[0]) if (defined $body[0]);
+printf "%d bytes content.\n", hex($body[0]) if (defined $body[0]);
 
 if (defined $body[1]) {
+    my @lines    = split m/\r\n/, $body[1];
     my $filename = $opt{'dir'} . "/" . $opt{'month'} . ".csv";
     open my $out, ">", $filename
         or die "open[$filename]: $!";
-    $body[1] =~ s/\r\n0\r\n//g;
-    print $out $body[1];
+    foreach my $line (@lines) {
+        next if ($line =~ m/^$/);
+        next if ($line =~ m/^0$/);
+        print $out encode($enc, $line) . "\n";
+    }
     close $out and print "close $out\n";
 }
 else {
-    die "no body\n";
+    die "no body: $!";
 }
 
 if ($opt{'ssl'}) {
