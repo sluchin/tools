@@ -10,8 +10,7 @@
 # @author Tetsuya Higashi
 # @version $Id$
 #
-# 使い方
-# caltime.pl ファイル
+# perldoc caltime.pl
 #
 # 入力
 # グループ,チームA,氏名,名無し,,,,,,,,,,,,
@@ -470,7 +469,7 @@ B<This program> calculation work time.
 
 Example:
 
-./caltime.pl -d \\192.168.1.2\share\worktime\
+./caltime.pl -d \\192.168.1.2\share\worktime\ -g
 
 \\192.168.1.2\share\worktime\
  |-name1\
