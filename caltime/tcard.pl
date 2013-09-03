@@ -31,8 +31,8 @@ my %opt = (
     'month'   => undef,
     'ssl'     => 0,
     'port'    => 80,
-    'debug'   => 1,
-    'verbose' => 0,
+    'start'   => 0,
+    'stop'    => 0,
     'help'    => 0,
     'version' => 0
 );
@@ -63,6 +63,8 @@ Usage: $progname [options]
    -m,  --month      Set month
    -s,  --ssl        SSL
    -p,  --port       This parameter sets port number default $opt{port}
+        --start      Start time card
+        --stop       Stop time card
    -h,  --help       Display this help and exit
    -V,  --version    Output version information and exit
 EOF
@@ -79,6 +81,8 @@ GetOptions(
     'month|m:s' => \$opt{'month'},
     'ssl|s'     => \$opt{'ssl'},
     'port|p:i'  => \$opt{'port'},
+    'start'     => \$opt{'start'},
+    'stop'      => \$opt{'stop'},
     'help|h|?'  => \$opt{'help'},
     'version|V' => \$opt{'version'}
   )
@@ -154,9 +158,23 @@ $body =
       . "&bpage=&fldsort=&order=&gid=" )
   . "&date="
   . $opt{'month'}
-  . "&prid=42&s_dloadb="
-  . uri_escape( encode( 'euc-jp', decode( 'utf8', "ダウンロード" ) ) )
-  . "&s_helpdisp=&s_subwinhide=";
+  . "&prid=42&";
+
+if ($opt{'start'}) {
+    $body .= "s_go="
+      . uri_escape( encode( 'euc-jp', decode( 'utf8', "出社" ) ) );
+
+}
+elsif ($opt{'stop'}) {
+    $body .= "s_leave="
+      . uri_escape( encode( 'euc-jp', decode( 'utf8', "退社" ) ) );
+}
+else {
+    $body .= "s_dloadb="
+      . uri_escape( encode( 'euc-jp', decode( 'utf8', "ダウンロード" ) ) );
+}
+
+$body .= "&s_helpdisp=&s_subwinhide=";
 
 my $content_length = bytes::length($body);
 
@@ -182,7 +200,7 @@ select($socket);
 $| = 1;
 select(STDOUT);
 
-my ( $ctx, $ssl, $res );
+my ( $ctx, $ssl );
 if ( $opt{'ssl'} ) {
     $ctx = Net::SSLeay::CTX_new() or die_now("Failed to create SSL_CTX $!");
     Net::SSLeay::CTX_set_options( $ctx, &Net::SSLeay::OP_ALL )
@@ -225,8 +243,17 @@ while (1) {
     last if ( !$len || $buf eq "" );
     printf "\n%s bytes read.\n", $len;
     print encode( $enc, decode( $dec, $buf ) );
-    $read_buffer .= decode( $dec, $buf );
+    $read_buffer .= $buf;
 }
+
+if ($opt{'start'} || $opt{'stop'}) {
+    $read_buffer = decode( 'euc-jp', $read_buffer );
+    print encode( $enc, $read_buffer ) . "\n";
+    exit( $stathash{'EX_OK'} );
+}
+
+$read_buffer = decode( $dec, $read_buffer );
+
 my @msg = split m/\r\n\r\n/, $read_buffer, 2;    # ヘッダ分割
 my @body = split m/\r\n/, $msg[1], 2 if ( defined $msg[1] );
 
