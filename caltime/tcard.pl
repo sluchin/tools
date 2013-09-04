@@ -33,6 +33,7 @@ my %opt = (
     'port'    => 80,
     'start'   => 0,
     'stop'    => 0,
+    'nogui'   => 1,
     'help'    => 0,
     'version' => 0
 );
@@ -65,6 +66,7 @@ Usage: $progname [options]
    -p,  --port       This parameter sets port number default $opt{port}
         --start      Start time card
         --stop       Stop time card
+   -n   --nogui      Command line interface
    -h,  --help       Display this help and exit
    -V,  --version    Output version information and exit
 EOF
@@ -83,6 +85,7 @@ GetOptions(
     'port|p:i'  => \$opt{'port'},
     'start'     => \$opt{'start'},
     'stop'      => \$opt{'stop'},
+    'nogui|n'   => \$opt{'nogui'},
     'help|h|?'  => \$opt{'help'},
     'version|V' => \$opt{'version'}
   )
