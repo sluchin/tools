@@ -1,5 +1,13 @@
 #!/usr/bin/perl -w
 
+##
+# @file tcard.pl
+#
+# タイムカードを操作する.
+#
+# @author Tetsuya Higashi
+#
+
 use strict;
 use warnings;
 use File::Basename;
@@ -14,6 +22,10 @@ our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
 };
 
 my $progname = basename($0);
+my $progpath;
+BEGIN { $progpath = dirname($0); }
+use lib "$progpath/lib";
+use gui;
 
 # ステータス
 my %stathash = (
@@ -33,7 +45,7 @@ my %opt = (
     'port'    => 80,
     'start'   => 0,
     'stop'    => 0,
-    'nogui'   => 1,
+    'nogui'   => 0,
     'help'    => 0,
     'version' => 0
 );
@@ -56,19 +68,19 @@ sub print_version() {
 sub usage() {
     print << "EOF"
 Usage: $progname [options]
-   -d,  --dir        Output directory
-   -u,  --user       Set user
-   -c,  --cid        Set cid
-   -i,  --id         Set id
-   -w,  --pw         Set pw
-   -m,  --month      Set month
-   -s,  --ssl        SSL
-   -p,  --port       This parameter sets port number default $opt{port}
-        --start      Start time card
-        --stop       Stop time card
-   -n   --nogui      Command line interface
-   -h,  --help       Display this help and exit
-   -V,  --version    Output version information and exit
+   -d, --dir        Output directory
+   -u, --user       Set user
+   -c, --cid        Set cid
+   -i, --id         Set id
+   -w, --pw         Set pw
+   -m, --month      Set month
+   -s, --ssl        SSL
+   -p, --port       This parameter sets port number default $opt{port}
+   --start          Start time card
+   --stop           Stop time card
+   -n, --nogui      Command line interface
+   -h, --help       Display this help and exit
+   -V, --version    Output version information and exit
 EOF
 }
 
@@ -127,13 +139,13 @@ my ( $header, $body );
 my $dest = "h1.teki-pakinets.com";
 
 # ヘッダ
-$header = "POST "
-  . "/cgi-bin/asp/000265/xinfo.cgi"
-  . " HTTP/1.1\r\nHost: "
+$header = "POST /cgi-bin/asp/000265/xinfo.cgi HTTP/1.1\r\n"
+  . "Host: "
   . $dest . "\r\n"
   . "Accept: test/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept-Language: ja,en-us;q=0.7,en;q=0.3\r\nAccept-Encoding: gzip, deflate\r\nReferer: http://h1.teki-pakinets.com/cgi-bin/asp/000265/xinfo.cgi?page=tcardindex&prid=42&date="
   . $opt{'month'}
-  . "\r\nCookie: " . "User="
+  . "\r\nCookie: "
+  . "User="
   . uri_escape( $opt{'user'} ) . "; "
   . "dnptab=S; "
   . "dnptabg=22; "
@@ -145,10 +157,11 @@ $header = "POST "
   . "dnptod=0; "
   . "dnpschwg=; "
   . "dnpschw=;"
-  . "PlusDesknets=cid:" . $opt{'cid'}
+  . "PlusDesknets="
+  . "cid:" . $opt{'cid'}
   . ",id:" . $opt{'id'}
-  . ",pw:" . $opt{'pw'}
-  . "\r\nConnection: keep-alive\r\n"
+  . ",pw:" . $opt{'pw'} . "\r\n"
+  . "Connection: keep-alive\r\n"
   . "Connection-Type: application/x-www-form-urlencoded\r\n";
 
 # ボディ
@@ -185,105 +198,113 @@ my $msg = $header;
 $msg .= "Content-Length: " . $content_length . "\r\n\r\n";
 $msg .= $body;
 
-if ( $opt{'ssl'} ) {
-    Net::SSLeay::load_error_strings();
-    Net::SSLeay::SSLeay_add_ssl_algorithms();
-    Net::SSLeay::randomize();
-}
+sub main {
 
-$opt{'port'} = getservbyname( $opt{'port'}, 'tcp' )
-  unless $opt{'port'} =~ /^\d+$/;
-my $ipaddr = gethostbyname($dest);
-my $dest_params = sockaddr_in( $opt{'port'}, $ipaddr );
-
-socket( my $socket, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
-  or die("socket: $!\n");
-connect( $socket, $dest_params ) or die "connect: $!";
-select($socket);
-$| = 1;
-select(STDOUT);
-
-my ( $ctx, $ssl );
-if ( $opt{'ssl'} ) {
-    $ctx = Net::SSLeay::CTX_new() or die_now("Failed to create SSL_CTX $!");
-    Net::SSLeay::CTX_set_options( $ctx, &Net::SSLeay::OP_ALL )
-      and die_if_ssl_error("ssl ctx set options");
-    $ssl = Net::SSLeay::new($ctx) or die_now("Failed to create SSL $!");
-    Net::SSLeay::set_fd( $ssl, fileno($socket) );
-    Net::SSLeay::connect($ssl) and die_if_ssl_error("ssl connect");
-    print "Cipher `" . Net::SSLeay::get_cipher($ssl) . "\n";
-}
-
-# 送信
-if ( $opt{'ssl'} ) {
-    Net::SSLeay::write( $ssl, $msg );
-    die_if_ssl_error("ssl write");
-    CORE::shutdown $socket, 1;
-}
-else {
-    send( $socket, $msg, 0 );
-}
-
-printf "\n%s bytes write.\n", bytes::length($msg);
-print $msg;
-
-my $read_buffer = "";
-while (1) {
-    my $buf = "";
     if ( $opt{'ssl'} ) {
-        $buf = Net::SSLeay::read( $ssl, 16384 ) || "";
-        die_if_ssl_error("ssl read");
+        Net::SSLeay::load_error_strings();
+        Net::SSLeay::SSLeay_add_ssl_algorithms();
+        Net::SSLeay::randomize();
     }
-    else {
-        recv( $socket, $buf, 16384, MSG_WAITALL );
+
+    $opt{'port'} = getservbyname( $opt{'port'}, 'tcp' )
+        unless $opt{'port'} =~ /^\d+$/;
+    my $ipaddr = gethostbyname($dest);
+    my $dest_params = sockaddr_in( $opt{'port'}, $ipaddr );
+
+    socket( my $socket, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
+        or die("socket: $!\n");
+    connect( $socket, $dest_params ) or die "connect: $!";
+    select($socket);
+    $| = 1;
+    select(STDOUT);
+
+    my ( $ctx, $ssl );
+    if ( $opt{'ssl'} ) {
+        $ctx = Net::SSLeay::CTX_new() or die_now("Failed to create SSL_CTX $!");
+        Net::SSLeay::CTX_set_options( $ctx, &Net::SSLeay::OP_ALL )
+                and die_if_ssl_error("ssl ctx set options");
+        $ssl = Net::SSLeay::new($ctx) or die_now("Failed to create SSL $!");
+        Net::SSLeay::set_fd( $ssl, fileno($socket) );
+        Net::SSLeay::connect($ssl) and die_if_ssl_error("ssl connect");
+        print "Cipher `" . Net::SSLeay::get_cipher($ssl) . "\n";
     }
-    die "read: $!\n"
-      unless ( defined $read_buffer || $read_buffer eq "" )
-      or $!{EAGAIN}
-      or $!{EINTR}
-      or $!{ENOBUFS};
-    my $len = bytes::length($buf);
-    last if ( !$len || $buf eq "" );
-    printf "\n%s bytes read.\n", $len;
-    print encode( $enc, decode( $dec, $buf ) );
-    $read_buffer .= $buf;
+
+    # 送信
+    if ( $opt{'ssl'} ) {
+        Net::SSLeay::write( $ssl, $msg );
+        die_if_ssl_error("ssl write");
+        CORE::shutdown $socket, 1;
+    } else {
+        send( $socket, $msg, 0 );
+    }
+
+    printf "\n%s bytes write.\n", bytes::length($msg);
+    print $msg;
+
+    my $read_buffer = "";
+    while (1) {
+        my $buf = "";
+        if ( $opt{'ssl'} ) {
+            $buf = Net::SSLeay::read( $ssl, 16384 ) || "";
+            die_if_ssl_error("ssl read");
+        } else {
+            recv( $socket, $buf, 16384, MSG_WAITALL );
+        }
+        die "read: $!\n"
+            unless ( defined $read_buffer || $read_buffer eq "" )
+                or $!{EAGAIN}
+                    or $!{EINTR}
+                        or $!{ENOBUFS};
+        my $len = bytes::length($buf);
+        last if ( !$len || $buf eq "" );
+        printf "\n%s bytes read.\n", $len;
+        print encode( $enc, decode( $dec, $buf ) );
+        $read_buffer .= $buf;
+    }
+
+    if ($opt{'start'} || $opt{'stop'}) {
+        $read_buffer = decode( 'euc-jp', $read_buffer );
+        print encode( $enc, $read_buffer ) . "\n";
+        exit( $stathash{'EX_OK'} );
+    }
+
+    $read_buffer = decode( $dec, $read_buffer );
+
+    my @msg = split m/\r\n\r\n/, $read_buffer, 2; # ヘッダ分割
+    my @body = split m/\r\n/, $msg[1], 2 if ( defined $msg[1] );
+
+    printf "Content length %d bytes.\n", hex( $body[0] ) if ( defined $body[0] );
+
+    if ( defined $body[1] ) {
+        my @lines = split m/\r\n/, $body[1];
+        my $filename = $opt{'dir'} . "/" . $opt{'month'} . ".csv";
+        open my $out, ">", $filename
+            or die "open[$filename]: $!";
+        foreach my $line (@lines) {
+            next if ( $line =~ m/^$/ );
+            next if ( $line =~ m/^0$/ );
+            print $out encode( $enc, $line ) . "\n";
+        }
+        close $out and print "close $out\n";
+    } else {
+        die "no body: $!";
+    }
+
+    if ( $opt{'ssl'} ) {
+        Net::SSLeay::free($ssl);
+        Net::SSLeay::CTX_free($ctx);
+    }
+
+    close $socket and print "close $socket\n";
+
 }
 
-if ($opt{'start'} || $opt{'stop'}) {
-    $read_buffer = decode( 'euc-jp', $read_buffer );
-    print encode( $enc, $read_buffer ) . "\n";
-    exit( $stathash{'EX_OK'} );
-}
-
-$read_buffer = decode( $dec, $read_buffer );
-
-my @msg = split m/\r\n\r\n/, $read_buffer, 2;    # ヘッダ分割
-my @body = split m/\r\n/, $msg[1], 2 if ( defined $msg[1] );
-
-printf "Content length %d bytes.\n", hex( $body[0] ) if ( defined $body[0] );
-
-if ( defined $body[1] ) {
-    my @lines = split m/\r\n/, $body[1];
-    my $filename = $opt{'dir'} . "/" . $opt{'month'} . ".csv";
-    open my $out, ">", $filename
-      or die "open[$filename]: $!";
-    foreach my $line (@lines) {
-        next if ( $line =~ m/^$/ );
-        next if ( $line =~ m/^0$/ );
-        print $out encode( $enc, $line ) . "\n";
-    }
-    close $out and print "close $out\n";
+if ( $opt{'start'} && !$opt{'nogui'} ) {
+    start_window(\&main);
 }
 else {
-    die "no body: $!";
+    main();
 }
-
-if ( $opt{'ssl'} ) {
-    Net::SSLeay::free($ssl);
-    Net::SSLeay::CTX_free($ctx);
-}
-
-close $socket and print "close $socket\n";
 
 exit( $stathash{'EX_OK'} );
 

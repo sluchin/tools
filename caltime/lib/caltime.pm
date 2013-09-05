@@ -4,7 +4,6 @@
 # 勤務時間を計算する.
 #
 # @author Tetsuya Higashi
-# @version $Id$
 #
 
 package caltime;
