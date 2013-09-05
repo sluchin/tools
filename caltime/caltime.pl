@@ -8,7 +8,6 @@
 # 勤務時間を計算する.
 #
 # @author Tetsuya Higashi
-# @version $Id$
 #
 # perldoc caltime.pl
 #
