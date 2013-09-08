@@ -17,6 +17,8 @@ use bytes();
 use URI::Escape;
 use Encode qw/encode decode/;
 use WWW::Mechanize;
+use HTTP::Cookies;
+use JSON;
 use Tk;
 
 our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
@@ -120,60 +122,88 @@ else {
     $dec = 'Shift_JIS';
 }
 
-my $start    = "s_go";
-my $stop     = "s_leave";
-my $download = "s_dloadb";
-my $url      = "https://h1.teki-pakinets.com/";
-my $home     = $url . "cgi-bin/asp/000265/dnet.cgi?";
-my $login    = $url . "cgi-bin/ppzlogin.cgi";
-my $tcard    = "xinfo.cgi?page=tcardindex&log=on";
+my $start    = "出社";
+my $stop     = "退社";
+my $download = "ダウンロード";
+my $url      = "http://itec-hokkaido.dn-cloud.com/";
+my $home     = $url . "cgi-bin/dneo/dneo.cgi";
+my $login    = $url . "cgi-bin/dneo/dneo.cgi?cmd=login";
+my $tcardlnk = "ztcard.cgi?cmd=tcardindex";
+my $tcard    = $url . "cgi-bin/dneo/" . $tcardlnk;
 
 my ( undef, undef, undef, undef, $mon, $year ) = localtime(time);
 my $month = sprintf( "%04d%02d", $year + 1900, $mon + 1 );
 my $filename = $opt{'dir'} . "/" . $month . ".csv";
 
-my $mech = new WWW::Mechanize( autocheck => 1 );
+# cookie_jarの生成
+my $cookie_jar = HTTP::Cookies->new(file => "cookie.txt", autosave => 1, ignore_discard => 1);
+my $mech = WWW::Mechanize->new( autocheck => 1, cookie_jar => $cookie_jar );
 
 sub login {
+    $mech->agent_alias( 'Linux Mozilla' );
     $mech->get($login);
     print $mech->content if $opt{'vorbis'};
 
     $mech->submit_form(
-        form_name => 'sf_auth',
-        fields    => {
-            userid   => $opt{'cid'},
-            gwuserid => $opt{'id'},
-            gwpasswd => $opt{'pw'},
+        fields      => {
+            cmd     => 'certify',
+            nexturl => 'dneo.cgi?cmd=login',
+            UserID  => $opt{'id'},
+            _word   => $opt{'pw'},
+            svlid   => 1,
         },
     );
+    die "Can't even get the home page: ", $mech->response->status_line
+        unless $mech->success;
     print $mech->content if $opt{'vorbis'};
+    my $json = JSON->new()->decode( $mech->content );
 
-    $mech->click();
+    my $cookie =
+          "dnzSid="   . $json->{'rssid'}  || "" . ";"
+        . "dnzToken=" . $json->{'STOKEN'} || "" . ";"
+        . "dnzSv="    . $json->{'dnzSv'}  || "" . ";";
+    print $cookie if $opt{'vorbis'};
+    $mech->add_header( Cookie => $cookie );
+    $mech->get($login);
+    die "Can't even get the home page: ", $mech->response->status_line
+        unless $mech->success;
     print $mech->content if $opt{'vorbis'};
 }
 
 sub tcard {
     login();
-    $mech->get($home);
-    print $mech->content if $opt{'vorbis'};
-
-    $mech->follow_link( url => $tcard );
+    $mech->follow_link( url => $tcardlnk );
     print $mech->content if $opt{'vorbis'};
 }
 
 sub start {
-    tcard();
-    $mech->submit_form( button => $start );
+    login();
+    $mech->submit_form(
+        fields   => {
+            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\"go\"},\"1\":{\"cmd\":\"tcardcmdtick\"}}"
+        },
+    );
+    print $mech->content if $opt{'vorbis'};
 }
 
 sub stop {
-    tcard();
-    $mech->submit_form( button => $stop );
+    login();
+    $mech->submit_form(
+        fields   => {
+            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\"leave\"},\"1\":{\"cmd\":\"tcardcmdtick\"}}"
+        },
+    );
+    print $mech->content if $opt{'vorbis'};
 }
 
 sub download {
     tcard();
-    $mech->submit_form( button => $download );
+    $mech->submit_form(
+        fields   => {
+            cmd  => 'tcardcmdexport',
+            date => $month . "01",
+        },
+    );
     print encode( $enc, decode( $dec, $mech->content ) ) if $opt{'vorbis'};
     $mech->save_content($filename);
 }
@@ -193,27 +223,18 @@ sub tk_window {
     MainLoop();
 }
 
-if ( $opt{'nogui'} ) {
-    if ( $opt{'start'} ) {
-        start();
-    }
-    elsif ( $opt{'stop'} ) {
-        stop();
-    }
-    else {
-        download();
-    }
+
+if ( $opt{'start'} ) {
+    tk_window( "Go", \&start ) unless ( $opt{'nogui'} );
+    start();
+} elsif ( $opt{'stop'} ) {
+    tk_window( "Leave", \&stop ) unless ( $opt{'nogui'} );
+    stop();
+} else {
+    tk_window( "Download", \&download ) unless ( $opt{'nogui'} );
+    download();
 }
-else {
-    if ( $opt{'start'} ) {
-        tk_window( "Go", \&start );
-    }
-    elsif ( $opt{'stop'} ) {
-        tk_window( "Leave", \&stop );
-    }
-    else {
-        tk_window( "Download", \&download );
-    }
-}
+
+
 exit( $stathash{'EX_OK'} );
 
