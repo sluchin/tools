@@ -33,7 +33,7 @@ use Getopt::Long;
 use utf8;
 use Encode qw/encode decode/;
 
-our $VERSION = do { my @r = ( q$Revision: 0.15 $ =~ /\d+/g );
+our $VERSION = do { my @r = ( q$Revision: 0.16 $ =~ /\d+/g );
     sprintf "%d." . "%02d" x $#r, @r if (@r);
 };
 
@@ -53,7 +53,7 @@ my %stathash = (
 # バージョン情報表示
 #
 sub print_version {
-    print "$progname version "
+    print "$progname version " 
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
@@ -72,8 +72,7 @@ Usage: $progname [options] [-d directory|file]
    -o,  --offset            Offset start time(-1=8:00).
    -g,  --group             Calcuration for group.
    -w,  --weekly            Calcuration weekly.
-   -D,  --debug             Debug.
-   -v,  --verbose           Output verbose message.
+   -v,  --verbose           Display extra information.
    -h,  --help              Display this help and exit.
    -V,  --version           Output version information and exit.
 EOF
@@ -86,7 +85,6 @@ my %opt = (
     'group'   => 0,
     'weekly'  => 0,
     'verbose' => 0,
-    'debug'   => 0,
     'help'    => 0,
     'version' => 0,
 );
@@ -100,10 +98,11 @@ GetOptions(
     'group|g'    => \$opt{'group'},
     'weekly|w'   => \$opt{'weekly'},
     'verbose|v'  => \$opt{'verbose'},
-    'debug|D'    => \$opt{'debug'},
     'help|h|?'   => \$opt{'help'},
     'version|V'  => \$opt{'version'},
-) or usage() and exit( $stathash{'EX_NG'} );
+  )
+  or usage()
+  and exit( $stathash{'EX_NG'} );
 
 usage() and exit( $stathash{'EX_OK'} ) if ( $opt{'help'} );
 print_version() if ( $opt{'version'} );
@@ -114,12 +113,19 @@ our $sep = ",";
 # 9:00から出勤
 our $basetime = 9.00;
 
-my $enc;
+# エンコード
+my ( $enc, $dec );
 if ( $^O eq "MSWin32" ) {
     $enc = 'Shift_JIS';
+    $dec = 'Shift_JIS';
+}
+elsif ( $^O eq "cygwin" ) {
+    $enc = 'UTF-8';
+    $dec = 'Shift_JIS';
 }
 else {
     $enc = 'UTF-8';
+    $dec = 'Shift_JIS';
 }
 
 my %grouphash;
@@ -143,8 +149,7 @@ sub init {
 #
 sub sum_weekly {
     return
-        $datelst[0]
-      . "-"
+        $datelst[0] . "-"
       . $datelst[-1]
       . $sep
       . $common_sum
@@ -164,7 +169,7 @@ sub sum_weekly {
 # 結果の表示
 #
 sub print_result {
-    my ($name, $date) = @_;
+    my ( $name, $date ) = @_;
 
     $date = $datelst[0] . "-" . $datelst[-1] unless ( defined $date );
     printf "%s %s\n", $date, encode( $enc, $name );
@@ -242,10 +247,10 @@ sub read_files {
                 # 連続していない月は, 一旦出力する
                 if (   $bmon ne ""
                     && $month ne ""
-                    && !( ($month + 0) <= ($bmon + 1) ) )
+                    && !( ( $month + 0 ) <= ( $bmon + 1 ) ) )
                 {
                     $output .= sum_weekly();
-                    print_result( $name );
+                    print_result($name);
                     init();
                 }
 
@@ -254,7 +259,7 @@ sub read_files {
 
                 if ( $week eq '日' ) {
                     $output .= sum_weekly();
-                    print_result( $name );
+                    print_result($name);
                     init();
                 }
                 $bmon = $month;
@@ -262,7 +267,7 @@ sub read_files {
 
             if (@datelst) {
                 $output .= sum_weekly();
-                print_result( $name );
+                print_result($name);
             }
             printf "%s\n", encode( $enc, $output ) if ( $opt{'verbose'} );
 
@@ -277,10 +282,10 @@ sub read_files {
 #
 sub read_file {
     my $file = shift;
-    my ( $in,     $out,  $output );
-    my ( $date,   $week, $begin, $end, $inf, $comment );
-    my ( $common, $over, $late,  $offset );
-    my ( $group,  $name, $person, $sum, $debug );
+    my ( $in, $out, $output );
+    my ( $date, $week, $begin, $end, $inf, $comment );
+    my ( $common, $over, $late, $offset );
+    my ( $group, $name, $person, $sum, $debug );
     my @diff;
     my @work;
 
@@ -295,8 +300,8 @@ sub read_file {
     ( undef, $group, undef, $name ) = split( /,/, $one );
     $group = "" unless ( defined $group );
     $name  = "" unless ( defined $name );
-    $group = decode( $enc, $group );
-    $name  = decode( $enc, $name );
+    $group = decode( $dec, $group );
+    $name  = decode( $dec, $name );
     $name =~ s/\s+//g;    # 空白削除
 
     # 2行目
@@ -313,7 +318,7 @@ sub read_file {
         $offset = $opt{'offset'} % 24;
         chomp($line);
         next if ( $line eq "" );
-        $line = decode( $enc, $line );
+        $line = decode( $dec, $line );
 
         (
             $date, $week, $begin, $inf,  undef, $comment,
@@ -325,16 +330,15 @@ sub read_file {
         $output .= $sep;
         $output .= $week if ( ( !defined $week ) || ( $week ne "" ) );
         $output .= $sep;
-        $debug .= $date . $sep if ( $opt{'debug'} );
+        $debug .= $date . $sep if ( $opt{'verbose'} );
 
-        # 始業時刻のコメントの先頭に時刻フォーマットの文字列がある場合,
-        # その時刻からオフセット値を求める
-        if ( defined $comment ) {
+        # 始業時刻のコメントの先頭に時刻フォーマットの文字列がある場合
+        if ( defined $comment ) { # 時刻からオフセット値を求める
             if ( $comment =~ /^\d{2}:\d{2}/ ) {
                 $comment = substr( $comment, 0, 5 );
-                $comment = conv_min( $comment );
-                print "$comment\n" if ( $opt{'debug'});
-                if ($basetime < $comment) {
+                $comment = conv_min($comment);
+                print "$comment\n" if ( $opt{'verbose'} );
+                if ( $basetime < $comment ) {
                     $offset = $comment - $basetime;
                 }
             }
@@ -345,7 +349,7 @@ sub read_file {
           if ( 15 <= $offset );    # 00:00以上
         $begin = conv_min( $begin, $offset );
         if ( defined $begin ) {
-            $debug .= sprintf( "%2.2f", $begin ) . $sep if ( $opt{'debug'} );
+            $debug .= sprintf( "%2.2f", $begin ) . $sep if ( $opt{'verbose'} );
             $output .= val2str($begin);
         }
         $output .= $sep;
@@ -354,13 +358,13 @@ sub read_file {
         $end = conv_hour( $end, $offset );
         $end = conv_min( $end, $offset );
         if ( defined $end ) {
-            $debug .= sprintf( "%2.2f", $end ) . $sep if ( $opt{'debug'} );
+            $debug .= sprintf( "%2.2f", $end ) . $sep if ( $opt{'verbose'} );
             $output .= val2str($end);
         }
         $output .= $sep;
         $sum = calc_sum( $begin, $end, $offset, $inf eq '出' ? 1 : 0 );
         $output .= $sum;
-        $debug  .= $sum if ( $opt{'debug'} );
+        $debug  .= $sum if ( $opt{'verbose'} );
         $begin  .= "";
         $end    .= "";
         my $regist =
@@ -383,14 +387,14 @@ sub read_file {
     };
     push( @filelst, $file );
     my ( $month, undef, undef ) = fileparse( $file, ('.csv') );
-    $month = decode( $enc, $month );
+    $month = decode( $dec, $month );
     @{ $grouphash{$file} } = (
         $month,       $group,         $name,
         $common_sum,  $over_sum,      $late_sum,
         $holiday_sum, $holi_late_sum, $worktime
     );
 
-    print $debug . "\n" if ( $opt{'debug'} );
+    print $debug . "\n" if ( $opt{'verbose'} );
     printf "%s\n", encode( $enc, $output ) if ( $opt{'verbose'} );
     print_result( $name, $month );
 
@@ -407,10 +411,10 @@ sub read_file {
     init();
 }
 
-print "@INC\n" if ( $opt{'debug'} );
+print "@INC\n" if ( $opt{'verbose'} );
 
 if ( defined( $opt{'dir'} ) ) {
-    $opt{'dirs'} = decode( $enc, $opt{'dirs'} );
+    $opt{'dirs'} = decode( $dec, $opt{'dirs'} );
     unless ( -d $opt{'dir'} ) {
         print "no directory: $opt{'dir'}\n";
         exit( $stathash{'EX_NG'} );
@@ -453,8 +457,7 @@ caltime.pl [options] [-d directory|file]
    -o,  --offset            Offset start time(-1=8:00).
    -g,  --group             Calcuration for group.
    -w,  --weekly            Calcuration weekly.
-   -D,  --debug             Debug.
-   -v,  --verbose           Output verbose message.
+   -v,  --verbose           Display extra information.
    -h,  --help              Display this help and exit.
    -V,  --version           Output version information and exit.
 
