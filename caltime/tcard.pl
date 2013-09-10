@@ -102,7 +102,7 @@ print_version() if ( $opt{'version'} );
 
 # 設定ファイル読み込み(オプション引数の方が優先度高い)
 my ( $config_file, $config );
-unless ( $opt{'id'} && $opt{'pw'} && $opt{'dir'} ) {
+if ( !$opt{'id'} || !$opt{'pw'} || !$opt{'dir'} ) {
     $config_file = File::Spec->catfile("./.tcard.conf");
     $config = eval { YAML::LoadFile($config_file) } || {};
 }
@@ -110,15 +110,16 @@ unless ( $opt{'id'} && $opt{'pw'} && $opt{'dir'} ) {
 # ディレクトリ
 $opt{'dir'} = $config->{'dir'} unless ( $opt{'dir'} );
 $opt{'dir'} = "." unless ( $opt{'dir'} );
-die "no directory: ", $opt{'dir'} unless ( -d $opt{'dir'} );
 
 # ユーザ
 $opt{'id'} = $config->{'user'} unless ( $opt{'id'} );
 die "no user" unless ( $opt{'id'} );
+print $opt{'id'} . "\n" if $opt{'vorbis'};
 
 # パスワード
-$opt{'pw'} = $config->{'user'} unless ( $opt{'pw'} );
+$opt{'pw'} = $config->{'passwd'} unless ( $opt{'pw'} );
 die "no passwd" unless ( $opt{'pw'} );
+print $opt{'pw'} . "\n" if $opt{'vorbis'};
 
 # エンコード
 my ( $enc, $dec );
@@ -206,6 +207,11 @@ sub tcard {
     my $arg = shift || undef;
     login();
     unless ( defined $arg ) {
+        # ディレクトリの存在確認
+        unless ( -d $opt{'dir'} ) {
+            print "no directory: ", $opt{'dir'};
+            exit( $stathash{'EX_NG'} );
+        }
         $mech->follow_link( url => $tcardlnk );
         print encode( $enc, $mech->content ) if $opt{'vorbis'};
         $mech->submit_form(
@@ -239,6 +245,34 @@ sub tcard {
     }
 }
 
+sub edit {
+    my ($stime, $etime) = @_;
+
+    $mech->submit_form(
+        fields => {
+            cmd               => 'tcardcmdentry',
+            id                => '',
+            prid              => '',
+            date              => '',
+            absencereason     => '',
+            absencereasonfree => '',
+            updatestime       => $stime,
+            sreason           => '',
+            updateouttime1    => '',
+            updateintime1     => '',
+            updateouttime2    => '',
+            updateintime2     => '',
+            updateouttime3    => '',
+            updateintime3     => '',
+            updateetime       => $etime,
+            ereason           => '',
+            Note              => '',
+        },
+    );
+
+    #"cmd=tcardcmdentry&id=8&prid=42&date=20130908&absencereason=&absencereasonfree=&updatestime=0000&sreason=テスト&updateouttime1=&updateintime1=&updateouttime2=&updateintime2=&updateouttime3=&updateintime3=&updateetime=0000&ereason=テスト&Note="
+}
+
 # コールバック
 sub start {
     tcard('go');
@@ -247,6 +281,7 @@ sub start {
 
 sub stop {
     tcard('leave');
+    #tcard();
     exit( $stathash{'EX_OK'} );
 }
 
