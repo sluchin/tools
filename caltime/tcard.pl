@@ -20,7 +20,7 @@ use WWW::Mechanize;
 use HTTP::Cookies;
 use JSON;
 use Tk;
-use File::Spec;
+use File::Spec::Functions;
 use YAML;
 
 our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
@@ -28,6 +28,7 @@ our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
 };
 
 my $progname = basename($0);
+my $progdir = dirname( readlink($0) || $0 );
 
 # ステータス
 my %stathash = (
@@ -53,7 +54,7 @@ my %opt = (
 # バージョン情報表示
 #
 sub print_version() {
-    print "$progname version " 
+    print "$progname version "
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
@@ -103,13 +104,21 @@ print_version() if ( $opt{'version'} );
 # 設定ファイル読み込み(オプション引数の方が優先度高い)
 my ( $config_file, $config );
 if ( !$opt{'id'} || !$opt{'pw'} || !$opt{'dir'} ) {
-    $config_file = File::Spec->catfile("./.tcard.conf");
+
+    #　設定ファイル
+    my $conf_dir = $ENV{'HOME'} || undef;
+    my $conf_name = ".tcard.conf";
+    $conf_dir = $progdir
+      if ( defined $conf_dir && !-f catfile( $conf_dir, $conf_name ) );
+    $config_file = catfile( $conf_dir, $conf_name );
+    print $config_file . "\n" if ( $opt{'vorbis'} );
     $config = eval { YAML::LoadFile($config_file) } || {};
 }
 
 # ディレクトリ
 $opt{'dir'} = $config->{'dir'} unless ( $opt{'dir'} );
 $opt{'dir'} = "." unless ( $opt{'dir'} );
+print $opt{'dir'} . "\n" if $opt{'vorbis'};
 
 # ユーザ
 $opt{'id'} = $config->{'user'} unless ( $opt{'id'} );
@@ -207,6 +216,7 @@ sub tcard {
     my $arg = shift || undef;
     login();
     unless ( defined $arg ) {
+
         # ディレクトリの存在確認
         unless ( -d $opt{'dir'} ) {
             print "no directory: ", $opt{'dir'};
@@ -246,7 +256,7 @@ sub tcard {
 }
 
 sub edit {
-    my ($stime, $etime) = @_;
+    my ( $stime, $etime ) = @_;
 
     $mech->submit_form(
         fields => {
@@ -270,7 +280,7 @@ sub edit {
         },
     );
 
-    #"cmd=tcardcmdentry&id=8&prid=42&date=20130908&absencereason=&absencereasonfree=&updatestime=0000&sreason=テスト&updateouttime1=&updateintime1=&updateouttime2=&updateintime2=&updateouttime3=&updateintime3=&updateetime=0000&ereason=テスト&Note="
+#"cmd=tcardcmdentry&id=8&prid=42&date=20130908&absencereason=&absencereasonfree=&updatestime=0000&sreason=テスト&updateouttime1=&updateintime1=&updateouttime2=&updateintime2=&updateouttime3=&updateintime3=&updateetime=0000&ereason=テスト&Note="
 }
 
 # コールバック
@@ -281,6 +291,7 @@ sub start {
 
 sub stop {
     tcard('leave');
+
     #tcard();
     exit( $stathash{'EX_OK'} );
 }
