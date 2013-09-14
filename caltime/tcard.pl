@@ -109,7 +109,7 @@ if ( !$opt{'id'} || !$opt{'pw'} || !$opt{'dir'} ) {
     my $conf_dir = $ENV{'HOME'} || undef;
     my $conf_name = ".tcard.conf";
     $conf_dir = $progdir
-      if ( defined $conf_dir && !-f catfile( $conf_dir, $conf_name ) );
+      if ( !defined $conf_dir || !-f catfile( $conf_dir, $conf_name ) );
     $config_file = catfile( $conf_dir, $conf_name );
     print $config_file . "\n" if ( $opt{'vorbis'} );
     $config = eval { YAML::LoadFile($config_file) } || {};
@@ -146,30 +146,38 @@ else {
 }
 
 my $url      = "https://itec-hokkaido.dn-cloud.com/";
-my $home     = $url . "cgi-bin/dneo/dneo.cgi?";
+my $home     = $url . "cgi-bin/dneo/dneo.cgi";
 my $login    = $url . "cgi-bin/dneo/dneo.cgi?cmd=login";
 my $tcardlnk = "ztcard.cgi?cmd=tcardindex";
 my $tcard    = $url . "cgi-bin/dneo/zrtcard.cgi";
 
+my ( undef, undef, undef, $mday, $mon, $year ) = localtime(time);
+my $date = sprintf( "%04d%02d%02d", $year + 1900, $mon + 1, $mday );
+
 unless ( defined $opt{'month'} ) {
     my ( undef, undef, undef, undef, $mon, $year ) = localtime(time);
-    $opt{'month'} = sprintf( "%04d%02d", $year + 1900, $mon + 1 );
+    $opt{'month'} = substr( $date, 0, 6 );
 }
+
 my $filename = $opt{'dir'} . "/" . $opt{'month'} . ".csv";
 
-# cookie_jarの生成
-my $cookie_jar = HTTP::Cookies->new(
-    file           => "cookie.txt",
-    autosave       => 1,
-    ignore_discard => 1
-);
-my $mech = WWW::Mechanize->new( autocheck => 1, cookie_jar => $cookie_jar );
-
+my $cookie_jar;
+my $mech;
 my $session_id;
-my $token;
+my ( $token, $prid );
 my $json;
 
 sub login {
+
+    # cookie_jarの生成
+    $cookie_jar = HTTP::Cookies->new(
+        file           => "cookie.txt",
+        autosave       => 1,
+        ignore_discard => 1
+    );
+
+    $mech = WWW::Mechanize->new( autocheck => 1, cookie_jar => $cookie_jar );
+
     $mech->agent_alias('Linux Mozilla');
     $mech->get($login);
     print encode( $enc, $mech->content ) if $opt{'vorbis'};
@@ -185,7 +193,7 @@ sub login {
     );
     die "Can't login: ", $mech->response->status_line
       unless $mech->success;
-    print encode( $enc, $mech->content ) if $opt{'vorbis'};
+    print encode( $enc, $mech->content ) . "\n" if $opt{'vorbis'};
     $json = decode_json( encode( 'utf8', $mech->content ) )
       or die "malformed JSON string: $!: ", encode( 'utf8', $mech->content );
 
@@ -199,6 +207,7 @@ sub login {
       . "dnzInfo="
       . ( encode( 'utf8', $json->{'id'} ) || "" );
     $token = $json->{'STOKEN'};
+    $prid  = $json->{'id'};
 
     if ( $opt{'vorbis'} ) {
         print $session_id . "\n";
@@ -212,58 +221,106 @@ sub login {
     print encode( $enc, $mech->content ) if $opt{'vorbis'};
 }
 
-sub tcard {
-    my $arg = shift || undef;
-    login();
-    unless ( defined $arg ) {
-
-        # ディレクトリの存在確認
-        unless ( -d $opt{'dir'} ) {
-            print "no directory: ", $opt{'dir'};
-            exit( $stathash{'EX_NG'} );
-        }
-        $mech->follow_link( url => $tcardlnk );
-        print encode( $enc, $mech->content ) if $opt{'vorbis'};
-        $mech->submit_form(
-            fields => {
-                cmd  => 'tcardcmdexport',
-                date => $opt{'month'} . "01",
-            },
-        );
-        print encode( $enc, decode( $dec, $mech->content ) ) if $opt{'vorbis'};
-        $mech->save_content($filename);
-    }
-    else {
-        $mech->add_header(
-            Accept          => 'application/json,text/javascript,*/*',
-            Referer         => $home,
-            Cookie          => $session_id,
-            Connection      => 'keep-alive',
-            Pragma          => 'no-cache',
-            'Cache-Control' => 'no-cache'
-        );
-        my $response = $mech->post(
-            $tcard,
-            [
-                multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\""
-                  . $arg
-                  . "\"},\"1\":{\"cmd\":\"tcardcmdtick\"}}",
-                $token => 1
-            ]
-        );
-        print encode( $enc, $mech->content ) if $opt{'vorbis'};
-    }
+sub logout {
+    $mech->add_header(
+        Accept             => 'application/json,text/javascript,*/*',
+        'Accept-Language'  => 'ja, en-us',
+        'Accept-Encoding'  => 'gzip, deflate',
+        'Content-Type'     => 'application/x-www-form-urlencoded',
+        charset            => 'UTF-8',
+        'X-Requested-With' => 'XMLHttpRequest',
+        Referer            => $home . '?',
+        Cookie             => $session_id,
+        Connection         => 'keep-alive',
+        Pragma             => 'no-cache',
+        'Cache-Control'    => 'no-cache',
+    );
+    my $response = $mech->post(
+        $home,
+        [
+            cmd    => "logout",
+            $token => 1
+        ]
+    );
+    print encode( $enc, $mech->content ) if $opt{'vorbis'};
 }
 
-sub edit {
-    my ( $stime, $etime ) = @_;
+sub tcard {
+    my $arg = shift;
 
+    login();
+    $mech->add_header(
+        Accept          => 'application/json,text/javascript,*/*',
+        Referer         => $home . '?',
+        Cookie          => $session_id,
+        Connection      => 'keep-alive',
+        Pragma          => 'no-cache',
+        'Cache-Control' => 'no-cache',
+    );
+    my $response = $mech->post(
+        $tcard,
+        [
+            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\"" 
+              . $arg
+              . "\"},\"1\":{\"cmd\":\"tcardcmdtick\"}}",
+            $token => 1
+        ]
+    );
+    print encode( $enc, $mech->content ) if $opt{'vorbis'};
+    logout;
+}
+
+sub tcard_dl {
+    my $tdate = shift;
+
+    login();
+
+    # ディレクトリの存在確認
+    unless ( -d $opt{'dir'} ) {
+        print "no directory: ", $opt{'dir'};
+        exit( $stathash{'EX_NG'} );
+    }
+    $mech->follow_link( url => $tcardlnk );
+    print encode( $enc, $mech->content ) if $opt{'vorbis'};
     $mech->submit_form(
         fields => {
+            cmd  => 'tcardcmdexport',
+            date => $tdate,
+        },
+    );
+    print encode( $enc, decode( $dec, $mech->content ) ) if $opt{'vorbis'};
+    $mech->save_content($filename);
+    logout();
+}
+
+sub tcard_edit {
+    my $edate = shift;
+    my $stime = shift || '';
+    my $etime = shift || '';
+
+    my $id = substr( $edate, 6, 2 );
+    print $id . "\n" if $opt{'vorbis'};
+
+    login();
+    $mech->follow_link( url => $tcardlnk );
+    print encode( $enc, $mech->content ) if $opt{'vorbis'};
+
+    $mech->add_header(
+        Accept          => 'application/json,text/javascript,*/*',
+        Referer         => $tcardlnk,
+        Cookie          => $session_id,
+        Connection      => 'keep-alive',
+        Pragma          => 'no-cache',
+        'Cache-Control' => 'no-cache',
+    );
+
+    my $response = $mech->post(
+        $tcard,
+        [
             cmd               => 'tcardcmdentry',
-            id                => '',
-            prid              => '',
-            date              => '',
+            id                => $id,
+            prid              => $prid,
+            date              => $edate,
             absencereason     => '',
             absencereasonfree => '',
             updatestime       => $stime,
@@ -277,27 +334,37 @@ sub edit {
             updateetime       => $etime,
             ereason           => '',
             Note              => '',
-        },
+            $token            => 1
+        ]
     );
+    print encode( $enc, $mech->content ) if $opt{'vorbis'};
 
-#"cmd=tcardcmdentry&id=8&prid=42&date=20130908&absencereason=&absencereasonfree=&updatestime=0000&sreason=テスト&updateouttime1=&updateintime1=&updateouttime2=&updateintime2=&updateouttime3=&updateintime3=&updateetime=0000&ereason=テスト&Note="
+    logout();
 }
 
 # コールバック
 sub start {
+    login();
     tcard('go');
+    logout();
     exit( $stathash{'EX_OK'} );
 }
 
 sub stop {
     tcard('leave');
-
-    #tcard();
+    tcard();
     exit( $stathash{'EX_OK'} );
 }
 
 sub download {
-    tcard();
+    my $d = shift;
+    tcard_dl($d);
+    exit( $stathash{'EX_OK'} );
+}
+
+sub edit {
+    my ( $d, $s, $e ) = @_;
+    tcard_edit( $d, $s, $e );
     exit( $stathash{'EX_OK'} );
 }
 
@@ -306,6 +373,7 @@ sub tk_window {
     my ( $text, $func ) = @_;
 
     my $mw = MainWindow->new();
+    $mw->title( decode( "UTF-8", "タイムカード" ) );
     $mw->geometry("200x100");
     $mw->resizable( 0, 0 );
     $mw->Label( -textvariable => \$text )->pack();
@@ -318,15 +386,16 @@ sub tk_window {
 }
 
 if ( $opt{'start'} ) {
-    tk_window( "Go", \&start ) unless ( $opt{'nogui'} );
+    tk_window( decode( "UTF-8", "出勤" ), \&start ) unless ( $opt{'nogui'} );
     start();
 }
 elsif ( $opt{'stop'} ) {
-    tk_window( "Leave", \&stop ) unless ( $opt{'nogui'} );
+    tk_window( decode( "UTF-8", "退社" ), \&stop ) unless ( $opt{'nogui'} );
     stop();
 }
 else {
-    tk_window( "Download", \&download ) unless ( $opt{'nogui'} );
+    tk_window( decode( "UTF-8", "ダウンロード" ), [ \&download, $date ] )
+      unless ( $opt{'nogui'} );
     download();
 }
 
