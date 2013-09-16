@@ -2,3 +2,4 @@
 /caltime/.tcard.conf
 /caltime/*.csv
 /caltime/cookie.txt
+/caltime/tcard.log

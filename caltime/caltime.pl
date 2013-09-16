@@ -38,9 +38,9 @@ our $VERSION = do { my @r = ( q$Revision: 0.16 $ =~ /\d+/g );
 };
 
 my $progname = basename($0);
-my $progpath;
-BEGIN { $progpath = dirname($0); }
-use lib "$progpath/lib";
+my $progdir;
+BEGIN { $progdir = dirname(readlink($0) || $0); }
+use lib "$progdir/lib";
 use caltime;
 
 # ステータス
@@ -53,7 +53,7 @@ my %stathash = (
 # バージョン情報表示
 #
 sub print_version {
-    print "$progname version " 
+    print "$progname version "
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
