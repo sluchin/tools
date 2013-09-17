@@ -32,6 +32,7 @@ our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
 my $progname = basename($0);
 my $progdir = dirname( readlink($0) || $0 );
 my $logconf = $progdir . '/' . "log4perl.conf";
+my $confname = ".tcard.conf";
 
 # ステータス
 my %stathash = (
@@ -125,31 +126,27 @@ my ( $config_file, $config );
 if ( !$opt{'id'} || !$opt{'pw'} || !$opt{'dir'} ) {
 
     #　設定ファイル
-    my $conf_dir = $ENV{'HOME'} || undef;
-    my $conf_name = ".tcard.conf";
-    $conf_dir = $progdir
-      if ( !defined $conf_dir || !-f catfile( $conf_dir, $conf_name ) );
-    $config_file = catfile( $conf_dir, $conf_name );
-    print $config_file . "\n" if ( $opt{'vorbis'} );
+    my $confdir = $ENV{'HOME'} || undef;
+    $confdir = $progdir
+      if ( !defined $confdir || !-f catfile( $confdir, $confname ) );
+    $config_file = catfile( $confdir, $confname );
+    $log->info($config_file);
     $config = eval { YAML::LoadFile($config_file) } || {};
 }
 
 # ディレクトリ
 $opt{'dir'} = $config->{'dir'} unless ( $opt{'dir'} );
 $opt{'dir'} = "." unless ( $opt{'dir'} );
-print $opt{'dir'} . "\n" if $opt{'vorbis'};
 $log->info($opt{'dir'});
 
 # ユーザ
 $opt{'id'} = $config->{'user'} unless ( $opt{'id'} );
 die "no user" unless ( $opt{'id'} );
-print $opt{'id'} . "\n" if $opt{'vorbis'};
 $log->info($opt{'id'});
 
 # パスワード
 $opt{'pw'} = $config->{'passwd'} unless ( $opt{'pw'} );
 die "no passwd" unless ( $opt{'pw'} );
-print $opt{'pw'} . "\n" if $opt{'vorbis'};
 $log->info($opt{'pw'});
 
 # エンコード
@@ -217,12 +214,12 @@ sub login {
             svlid   => 1,
         },
     );
-    die "Can't login: ", $mech->response->status_line
+    $log->error("Can't submit_form: ", $mech->response->status_line)
       unless $mech->success;
     print encode( $enc, $mech->content ) . "\n" if $opt{'vorbis'};
     $log->debug( encode( $enc, $mech->content ) );
     $json = decode_json( encode( 'utf8', $mech->content ) )
-      or die "malformed JSON string: $!: ", encode( 'utf8', $mech->content );
+      or $log->error("malformed JSON string: $!: ", encode( 'utf8', $mech->content ) );
 
     $session_id =
         "dnzSid="
@@ -244,7 +241,7 @@ sub login {
 
     $mech->add_header( Cookie => $session_id );
     $mech->get($login);
-    die "Can't login: ", $mech->response->status_line
+    $log->error("Can't login: ", $mech->response->status_line)
       unless $mech->success;
     print encode( $enc, $mech->content ) if $opt{'vorbis'};
     $log->debug( encode( $enc, $mech->content ) );
@@ -271,6 +268,8 @@ sub logout {
             $token => 1
         ]
     );
+    $log->error("Can't logout: ", $mech->response->status_line)
+      unless $mech->success;
     print encode( $enc, $mech->content ) if $opt{'vorbis'};
     $log->debug( encode( $enc, $mech->content ) );
 }
@@ -290,12 +289,14 @@ sub tcard {
     my $response = $mech->post(
         $tcard,
         [
-            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\"" 
+            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\""
               . $arg
               . "\"},\"1\":{\"cmd\":\"tcardcmdtick\"}}",
             $token => 1
         ]
     );
+    $log->error("Can't post: ", $mech->response->status_line)
+      unless $mech->success;
     print encode( $enc, $mech->content ) if $opt{'vorbis'};
     $log->debug( encode( $enc, $mech->content ) );
     logout;
@@ -306,16 +307,18 @@ sub tcard_dl {
 
     # ディレクトリの存在確認
     unless ( -d $opt{'dir'} ) {
-        print "no directory: ", $opt{'dir'};
+        $log->error("no directory: ", $opt{'dir'});
         return;
     }
     $dt = $entry->get if ( defined $entry );
-    return unless ( length $dt eq 8 );
+    $log->error($dt) and return unless ( length $dt eq 8 );
     my $filename = $opt{'dir'} . "/" . substr( $dt, 0, 6 ) . ".csv";
 
     login();
 
     $mech->follow_link( url => $tcardlnk );
+    $log->error("Can't follow_link: ", $tcardlnk, ": ", $mech->response->status_line)
+      unless $mech->success;
     print encode( $enc, $mech->content ) if $opt{'vorbis'};
     $log->debug( encode( $enc, $mech->content ) );
 
@@ -325,6 +328,8 @@ sub tcard_dl {
             date => $dt,
         },
     );
+    $log->error("Can't submit_form: ", $mech->response->status_line)
+      unless $mech->success;
     print encode( $enc, decode( $dec, $mech->content ) ) if $opt{'vorbis'};
     $log->info( encode( $enc, decode( $dec, $mech->content ) ) );
 
@@ -337,6 +342,7 @@ sub tcard_edit {
     my ( $entry, $dt, $old, $new ) = @_;
 
     $dt = $entry->get if ( defined $entry );
+    $log->error($dt) and return if ( !defined $dt || length $dt ne 8 );
 
     foreach my $key ( keys $new ) {
         if ( exists $old->{$key} && $old->{$key} eq $new->{$key} ) {
@@ -351,6 +357,8 @@ sub tcard_edit {
 
     login();
     $mech->follow_link( url => $tcardlnk );
+    $log->error("Can't follow_link: ", $tcardlnk, ": ", $mech->response->status_line)
+      unless $mech->success;
     print encode( $enc, $mech->content ) if $opt{'vorbis'};
     $log->debug( encode( $enc, $mech->content ) );
 
@@ -386,6 +394,8 @@ sub tcard_edit {
             $token              => 1,
         ]
     );
+    $log->error("Can't post: ", $tcard, ": ", $mech->response->status_line)
+      unless $mech->success;
     print encode( $enc, $mech->content ) if $opt{'vorbis'};
     $log->info( encode( $enc, $mech->content ) );
 
@@ -396,7 +406,7 @@ sub get_time {
     my ( $entry, $dt, $old, $new ) = @_;
 
     $dt = $entry->get if ( defined $entry );
-    return unless ( length $dt eq 8 );
+    $log->error($dt) and return if ( !defined $dt || length $dt ne 8 );
     my $year = substr( $dt, 0, 4 );
     my $mon  = substr( $dt, 4, 2 );
     my $day  = substr( $dt, 6, 2 );
@@ -406,6 +416,8 @@ sub get_time {
     login();
 
     $mech->follow_link( url => $tcardlnk );
+    $log->error("Can't follow_link: ", $tcardlnk, ": ", $mech->response->status_line)
+      unless $mech->success;
     print encode( $enc, $mech->content ) if $opt{'vorbis'};
     $log->debug( encode( $enc, $mech->content ) );
 
@@ -415,6 +427,8 @@ sub get_time {
             date => $dt,
         },
     );
+    $log->error("Can't submit_form: ", $mech->response->status_line)
+      unless $mech->success;
     print encode( $enc, decode( $dec, $mech->content ) ) if $opt{'vorbis'};
     $log->debug( encode( $enc, decode( $dec, $mech->content ) ) );
 
@@ -452,28 +466,6 @@ sub get_time {
       keys $new
 }
 
-# コールバック
-sub start {
-    login();
-    tcard('go');
-    logout();
-}
-
-sub stop {
-    tcard('leave');
-    tcard();
-}
-
-sub download {
-    my ( $entry, $d ) = @_;
-    tcard_dl( $entry, $d );
-}
-
-sub edit {
-    my ( $entry, $d, $old, $new ) = @_;
-    tcard_edit( $entry, $d, $old, $new );
-}
-
 # ウィンドウ
 sub tk_part {
     my ( $text, $func ) = @_;
@@ -506,9 +498,9 @@ sub tk_all {
     my $tab1 = $book->add( "Sheet 1", -label => decode_utf8("出社/退社") );
     my $tab2 = $book->add( "Sheet 2", -label => decode_utf8("編集") );
 
-    $tab1->Button( -text => decode_utf8("出社"), -command => \&stop )
+    $tab1->Button( -text => decode_utf8("出社"), -command => [ \&tcard, "go" ] )
       ->grid( -row => 1, -column => 3, -padx => 15, -pady => 15 );
-    $tab1->Button( -text => decode_utf8("退社"), -command => \&start )
+    $tab1->Button( -text => decode_utf8("退社"), -command => [ \&tcard, "leave" ] )
       ->grid( -row => 2, -column => 3, -padx => 15, -pady => 15 );
 
     $tab1->Label( -text => decode_utf8("日付: ") )
@@ -517,7 +509,7 @@ sub tk_all {
     $entry1->grid( -row => 3, -column => 2, -padx => 15, -pady => 15 );
     $tab1->Button(
         -text    => decode_utf8("ダウンロード"),
-        -command => [ \&download, $entry1, $opt{'date'} ]
+        -command => [ \&tcard_dl, $entry1, $opt{'date'} ]
     )->grid( -row => 3, -column => 3, -padx => 15, -pady => 15 );
     $tab1->Button( -text => decode_utf8("終了"), -command => \&exit )
       ->grid( -row => 4, -column => 4, -padx => 15, -pady => 15 );
@@ -556,7 +548,7 @@ sub tk_all {
 
     $tab2->Button(
         -text    => decode_utf8("編集"),
-        -command => [ \&edit, $entry2, $opt{'date'}, \%old, \%new ]
+        -command => [ \&tcard_edit, $entry2, $opt{'date'}, \%old, \%new ]
     )->grid( -row => 5, -column => 4, -pady => 10 );
 
     $tab2->Button( -text => decode_utf8("終了"), -command => \&exit )
@@ -569,22 +561,22 @@ if ( $opt{'start'} ) {
     tk_part( decode_utf8("出社"), \&start )
       and exit( $stathash{'EX_OK'} )
       unless ( $opt{'nogui'} );
-    start();
+    tcard("go");
 }
 elsif ( $opt{'stop'} ) {
     tk_part( decode_utf8("退社"), \&stop )
       and exit( $stathash{'EX_OK'} )
       unless ( $opt{'nogui'} );
-    stop();
+    tcard("leave");
 }
 elsif ( $opt{'download'} ) {
     tk_part(
         decode_utf8("ダウンロード"),
-        [ \&download, undef, $opt{'date'} ]
+        [ \&tcard_dl, undef, $opt{'date'} ]
       )
       and exit( $stathash{'EX_OK'} )
       unless ( $opt{'nogui'} );
-    download();
+    tcard_dl(undef, $opt{'date'});
 }
 elsif ( $opt{'edit'} ) {
     my ( %old, %new );
@@ -596,7 +588,7 @@ elsif ( $opt{'edit'} ) {
         [ \&edit, undef, $opt{'date'}, \%old, \%new ] )
       and exit( $stathash{'EX_OK'} )
       unless ( $opt{'nogui'} );
-    edit();
+    tcard_edit( undef, $opt{'date'}, \%old, \%new );
 }
 else {
     tk_all();
