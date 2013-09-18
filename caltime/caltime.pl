@@ -39,8 +39,9 @@ our $VERSION = do { my @r = ( q$Revision: 0.16 $ =~ /\d+/g );
 
 my $progname = basename($0);
 my $progdir;
-BEGIN { $progdir = dirname(readlink($0) || $0); }
-use lib "$progdir/lib";
+BEGIN { $progdir = dirname(readlink($0) || $0);
+        push(@INC, $progdir . '/lib'); }
+#use lib "$progdir/lib";
 use caltime;
 
 # ステータス
