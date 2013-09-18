@@ -11,18 +11,18 @@
 use strict;
 use warnings;
 use File::Basename;
+use File::Spec::Functions;
 use Getopt::Long;
 use Socket;
-use bytes();
 use URI::Escape;
 use Encode qw/encode decode decode_utf8/;
 use WWW::Mechanize;
 use HTTP::Cookies;
 use JSON;
+use YAML;
 use Tk;
 use Tk::NoteBook;
-use File::Spec::Functions;
-use YAML;
+use Tk::DateEntry;
 use Log::Log4perl;
 
 our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
@@ -32,7 +32,7 @@ our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
 my $progname = basename($0);
 my $progdir = dirname( readlink($0) || $0 );
 my $logconf = $progdir . '/' . "log4perl.conf";
-my $confname = ".tcard.conf";
+my $confname = "tcard.conf";
 
 # ステータス
 my %stathash = (
@@ -96,12 +96,12 @@ EOF
 # オプション引数
 Getopt::Long::Configure(qw{no_getopt_compat no_auto_abbrev no_ignore_case});
 GetOptions(
-    'dir|d:s'   => \$opt{'dir'},
-    'id|i:s'    => \$opt{'id'},
-    'pw|w:s'    => \$opt{'pw'},
-    'date|t:s'  => \$opt{'date'},
-    'stime|s:s' => \$opt{'stime'},
-    'etime|e:s' => \$opt{'etime'},
+    'dir|d=s'   => \$opt{'dir'},
+    'id|i=s'    => \$opt{'id'},
+    'pw|w=s'    => \$opt{'pw'},
+    'date|t=s'  => \$opt{'date'},
+    'stime|s=s' => \$opt{'stime'},
+    'etime|e=s' => \$opt{'etime'},
     'start'     => \$opt{'start'},
     'stop'      => \$opt{'stop'},
     'download'  => \$opt{'download'},
@@ -485,6 +485,17 @@ sub tk_part {
 
 sub tk_all {
     my ( %old, %new );
+
+    sub parse {
+        my ( $day, $mon, $yr ) = split '-', $_[0];
+        return ( $yr, $mon, $day );
+    }
+
+    sub format {
+        my ( $yr, $mon, $day ) = @_;
+        return sprintf( "%04d%02d%02d", $yr, $mon, $day );
+    }
+
     $new{'stime'} = $opt{'stime'} if ( defined $opt{'stime'} );
     $new{'etime'} = $opt{'etime'} if ( defined $opt{'etime'} );
 
@@ -505,7 +516,7 @@ sub tk_all {
 
     $tab1->Label( -text => decode_utf8("日付: ") )
       ->grid( -row => 3, -column => 1 );
-    my $entry1 = $tab1->Entry( -text => \$opt{'date'}, -width => 10 );
+    my $entry1 = $tab1->DateEntry( -textvariable=> $opt{'date'}, -width => 10, -parsecmd => \&parse, -formatcmd => \&format )->pack;
     $entry1->grid( -row => 3, -column => 2, -padx => 15, -pady => 15 );
     $tab1->Button(
         -text    => decode_utf8("ダウンロード"),
@@ -516,7 +527,7 @@ sub tk_all {
 
     $tab2->Label( -text => decode_utf8("日付: ") )
       ->grid( -row => 1, -column => 1, -pady => 5 );
-    my $entry2 = $tab2->Entry( -text => \$opt{'date'}, -width => 10 );
+    my $entry2 = $tab2->DateEntry( -textvariable=> $opt{'date'}, -width => 10, -parsecmd => \&parse, -formatcmd => \&format )->pack;
     $entry2->grid( -row => 1, -column => 2, -pady => 5 );
     $tab2->Button(
         -text    => decode_utf8("読込"),
@@ -558,13 +569,13 @@ sub tk_all {
 }
 
 if ( $opt{'start'} ) {
-    tk_part( decode_utf8("出社"), \&start )
+    tk_part( decode_utf8("出社"), [ \&tcard, "go" ] )
       and exit( $stathash{'EX_OK'} )
       unless ( $opt{'nogui'} );
     tcard("go");
 }
 elsif ( $opt{'stop'} ) {
-    tk_part( decode_utf8("退社"), \&stop )
+    tk_part( decode_utf8("退社"), [ \&tcard, "leave" ] )
       and exit( $stathash{'EX_OK'} )
       unless ( $opt{'nogui'} );
     tcard("leave");
@@ -598,3 +609,42 @@ exit( $stathash{'EX_OK'} );
 
 __END__
 
+=head1 NAME
+
+tcard.pl - pushed time card.
+
+=head1 SYNOPSIS
+
+tcard.pl [options]
+
+ Options:
+   -d, --dir=drectory  Output directory.
+   -i, --id=id         Set id.
+   -w, --pw=password   Set pw.
+   -t, --date=date     Set date.
+   -s, --stime=time    Edit time arriving at work.
+   -e, --etime=time    Edit time getting away.
+       --start         Start time card.
+       --stop          Stop time card.
+       --download      Download time card.
+       --edit          Edit time card.
+       --nogui         Command line interface.
+   -v, --vorbis        Display extra information.
+   -h, --help          Display this help and exit.
+   -V, --version       Output version information and exit.
+
+=over 4
+
+=back
+
+=head1 DESCRIPTION
+
+B<This program> is tool for time card.
+
+tcard.conf:
+
+dir: <Directory for download>
+user: <User id>
+passwd: <User password>
+
+=cut
