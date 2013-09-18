@@ -40,6 +40,7 @@ my %opt = (
     'gpass'    => '',
     'tuser'    => '',
     'tpass'    => '',
+    'identity' => '',
     'nogui'    => 0,
     'vorbis'   => 0,
     'help'     => 0,
@@ -70,6 +71,7 @@ Usage: $progname [options]
        --gpass             Gateway password.
        --tuser             Target username.
        --tpass             Target password.
+   -i  --identity          Selects a file from which the identity file.
        --nogui             Command line interface.
    -v, --vorbis            Display extra information.
    -h, --help              Display this help and exit.
@@ -86,6 +88,7 @@ GetOptions(
     'gpass=s'     => \$opt{'gpass'},
     'tuser=s'     => \$opt{'tuser'},
     'tpass=s'     => \$opt{'tpass'},
+    'identity=s'  => \$opt{'identity'},
     'nogui'       => \$opt{'nogui'},
     'vorbis|v'    => \$opt{'vorbis'},
     'help|h|?'    => \$opt{'help'},
