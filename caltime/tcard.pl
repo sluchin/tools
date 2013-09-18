@@ -20,8 +20,6 @@ use WWW::Mechanize;
 use HTTP::Cookies;
 use JSON;
 use YAML;
-use Tk;
-use Tk::NoteBook;
 use Log::Dispatch;
 
 our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
@@ -37,8 +35,6 @@ BEGIN {
 }
 my $logfile = catfile( $progdir, "tcard.log" );
 my $confname = "tcard.conf";
-
-use Tk::DateEntry;
 
 # ステータス
 my %stathash = (
@@ -122,6 +118,10 @@ GetOptions(
 
 usage() and exit( $stathash{'EX_OK'} ) if ( $opt{'help'} );
 print_version() if ( $opt{'version'} );
+
+eval 'use Tk; 1'            || ( $opt{'nogui'} = 1 );
+eval 'use Tk::NoteBook; 1'  || ( $opt{'nogui'} = 1 );
+eval 'use Tk::DataEntry; 1' || ( $opt{'nogui'} = 1 );
 
 sub filecb {
     my %args = @_;
@@ -652,7 +652,7 @@ elsif ( $opt{'edit'} ) {
     tcard_edit( undef, $opt{'date'}, \%old, \%new );
 }
 else {
-    tk_all();
+    tk_all() unless ( $opt{'nogui'} );
 }
 
 exit( $stathash{'EX_OK'} );
