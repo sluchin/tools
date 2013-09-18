@@ -39,9 +39,11 @@ our $VERSION = do { my @r = ( q$Revision: 0.16 $ =~ /\d+/g );
 
 my $progname = basename($0);
 my $progdir;
-BEGIN { $progdir = dirname(readlink($0) || $0);
-        push(@INC, $progdir . '/lib'); }
-#use lib "$progdir/lib";
+
+BEGIN {
+    $progdir = dirname( readlink($0) || $0 );
+    push( @INC, $progdir . '/lib' );
+}
 use caltime;
 
 # ステータス
@@ -334,7 +336,7 @@ sub read_file {
         $debug .= $date . $sep if ( $opt{'verbose'} );
 
         # 始業時刻のコメントの先頭に時刻フォーマットの文字列がある場合
-        if ( defined $comment ) { # 時刻からオフセット値を求める
+        if ( defined $comment ) {   # 時刻からオフセット値を求める
             if ( $comment =~ /^\d{2}:\d{2}/ ) {
                 $comment = substr( $comment, 0, 5 );
                 $comment = conv_min($comment);
