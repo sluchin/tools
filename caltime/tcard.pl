@@ -22,17 +22,21 @@ use JSON;
 use YAML;
 use Tk;
 use Tk::NoteBook;
-use Tk::DateEntry;
-use Log::Log4perl;
 
 our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
     sprintf "%d." . "%02d" x $#r, @r if (@r);
 };
 
 my $progname = basename($0);
-my $progdir = dirname( readlink($0) || $0 );
+my $progdir;
+BEGIN { $progdir = dirname(readlink($0) || $0);
+         push(@INC, $progdir . '/lib'); }
+#use lib "$progdir/lib";
 my $logconf = $progdir . '/' . "log4perl.conf";
 my $confname = "tcard.conf";
+
+use Tk::DateEntry;
+use Log::Log4perl;
 
 # ステータス
 my %stathash = (
