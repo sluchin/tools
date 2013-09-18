@@ -35,6 +35,7 @@ BEGIN {
 }
 my $logfile = catfile( $progdir, "tcard.log" );
 my $confname = "tcard.conf";
+my$iconfile = catfile( $progdir, "icon", "icon.xpm" );
 
 # ステータス
 my %stathash = (
@@ -150,14 +151,15 @@ my $log = Log::Dispatch->new(
     outputs => [
         [
             'File',
-            min_level => 'debug',
-            filename  => $logfile,
-            callbacks => \&filecb
+            'min_level' => 'debug',
+            'filename'  => $logfile,
+            'mode'      => 'append',
+            'callbacks' => \&filecb
         ],
         [
             'Screen',
-            min_level => $opt{'vorbis'} ? 'debug' : 'info',
-            callbacks => \&screencb
+            'min_level' => $opt{'vorbis'} ? 'debug' : 'info',
+            'callbacks' => \&screencb
         ],
     ],
 );
@@ -541,6 +543,10 @@ sub tk_all {
     $mw->title( decode_utf8("タイムカード") );
     $mw->geometry("500x300");
     $mw->resizable( 0, 0 );
+    if (-f $iconfile) {
+        my $image = $mw->Pixmap(-file => $iconfile);
+        $mw->Icon(-image => $image);
+    }
 
     my $book = $mw->NoteBook()->pack( -fill => 'both', -expand => 1 );
 
