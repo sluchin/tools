@@ -68,13 +68,13 @@ sub usage {
     print << "EOF"
 Usage: $progname [options] [-d directory|file]
  Options:
-   -d,  --dir=directory     Calcuration files from directory.
-   -o,  --offset            Offset start time(-1=8:00).
-   -g,  --group             Calcuration for group.
-   -w,  --weekly            Calcuration weekly.
-   -v,  --verbose           Display extra information.
-   -h,  --help              Display this help and exit.
-   -V,  --version           Output version information and exit.
+   -d, --dir=directory    Calcuration files from directory.
+   -o, --offset           Offset start time(-1=8:00).
+   -g, --group            Calcuration for group.
+   -w, --weekly           Calcuration weekly.
+   -v, --verbose          Display extra information.
+   -h, --help             Display this help and exit.
+   -V, --version          Output version information and exit.
 EOF
 }
 
@@ -453,13 +453,13 @@ caltime.pl - calculation work time.
 caltime.pl [options] [-d directory|file]
 
  Options:
-   -d,  --dir=directory     Calcuration files from directory.
-   -o,  --offset            Offset start time(-1=8:00).
-   -g,  --group             Calcuration for group.
-   -w,  --weekly            Calcuration weekly.
-   -v,  --verbose           Display extra information.
-   -h,  --help              Display this help and exit.
-   -V,  --version           Output version information and exit.
+   -d, --dir=directory    Calcuration files from directory.
+   -o, --offset           Offset start time(-1=8:00).
+   -g, --group            Calcuration for group.
+   -w, --weekly           Calcuration weekly.
+   -v, --verbose          Display extra information.
+   -h, --help             Display this help and exit.
+   -V, --version          Output version information and exit.
 
 =over 4
 
