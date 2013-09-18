@@ -119,10 +119,12 @@ GetOptions(
 usage() and exit( $stathash{'EX_OK'} ) if ( $opt{'help'} );
 print_version() if ( $opt{'version'} );
 
+# Tk ない場合, コマンドライン
 eval 'use Tk; 1'            || ( $opt{'nogui'} = 1 );
 eval 'use Tk::NoteBook; 1'  || ( $opt{'nogui'} = 1 );
-eval 'use Tk::DataEntry; 1' || ( $opt{'nogui'} = 1 );
+eval 'use Tk::DateEntry; 1' || ( $opt{'nogui'} = 1 );
 
+# ログ出力
 sub filecb {
     my %args = @_;
     my ( $pkg, $file, $line );
@@ -160,7 +162,7 @@ my $log = Log::Dispatch->new(
     ],
 );
 
-$log->info("@INC");
+$log->debug("@INC");
 
 # 設定ファイル読み込み(オプション引数の方が優先度高い)
 my $config;
@@ -652,7 +654,14 @@ elsif ( $opt{'edit'} ) {
     tcard_edit( undef, $opt{'date'}, \%old, \%new );
 }
 else {
-    tk_all() unless ( $opt{'nogui'} );
+    if ( $opt{'nogui'} ) {
+        $log->warning("No Tk module.");
+        usage();
+        exit( $stathash{'EX_NG'} );
+    }
+    else {
+        tk_all();
+    }
 }
 
 exit( $stathash{'EX_OK'} );
@@ -696,5 +705,15 @@ tcard.conf:
 dir: <Directory for download>
 user: <User id>
 passwd: <User password>
+
+If ActivePerl, you must install from ppm.
+
+ppm install YAML
+ppm install Log-Dispatch
+
+32bit
+ppm install http://www.bribes.org/perl/ppm/Tk.ppd
+64bit
+ppm install http://www.bribes.org/perl/ppm64/Tk.ppd
 
 =cut
