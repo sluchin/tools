@@ -278,11 +278,11 @@ sub login {
             svlid   => 1,
         },
     );
-    $log->error( "Can't submit_form: ", $mech->response->status_line )
+    $log->error( "Can't submit_form:", $mech->response->status_line )
       unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
     $json = decode_json( encode( 'utf8', $mech->content ) )
-      or $log->error( "malformed JSON string: $!: ",
+      or $log->error( "malformed JSON string: $!:",
         encode( 'utf8', $mech->content ) );
 
     $session_id =
@@ -303,7 +303,7 @@ sub login {
 
     $mech->add_header( Cookie => $session_id );
     $mech->get($login);
-    $log->error( "Can't login: ", $mech->response->status_line )
+    $log->error( "Can't login:", $mech->response->status_line )
       unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
 }
@@ -329,7 +329,7 @@ sub logout {
             $token => 1
         ]
     );
-    $log->error( "Can't logout: ", $mech->response->status_line )
+    $log->error( "Can't logout:", $mech->response->status_line )
       unless $mech->success;
 
     #    print encode( $enc, $mech->content ) if $opt{'vorbis'};
@@ -360,7 +360,7 @@ sub tcard {
             $token => 1
         ]
     );
-    $log->error( "Can't post: ", $mech->response->status_line )
+    $log->error( "Can't post:", $mech->response->status_line )
       unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
     logout;
@@ -374,18 +374,18 @@ sub tcard_dl {
 
     # ディレクトリの存在確認
     unless ( -d $opt{'dir'} ) {
-        $log->error( "no directory: ", $opt{'dir'} );
+        $log->error( "no directory:", $opt{'dir'} );
         return;
     }
     $dt = $entry->get if ( defined $entry );
-    $log->error($dt) and return unless ( length $dt eq 8 );
+    $log->error("date:", $dt || '') or return unless ( length $dt eq 8 );
     my $filename = $opt{'dir'} . "/" . substr( $dt, 0, 6 ) . ".csv";
 
     login();
 
     $mech->follow_link( url => $tcardlnk );
-    $log->error( "Can't follow_link: ",
-        $tcardlnk, ": ", $mech->response->status_line )
+    $log->error( "Can't follow_link:",
+        $tcardlnk, ":", $mech->response->status_line )
       unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
 
@@ -395,7 +395,7 @@ sub tcard_dl {
             date => $dt,
         },
     );
-    $log->error( "Can't submit_form: ", $mech->response->status_line )
+    $log->error( "Can't submit_form:", $mech->response->status_line )
       unless $mech->success;
     $log->info( encode( $enc, decode( $dec, $mech->content ) ) );
 
@@ -411,7 +411,7 @@ sub tcard_edit {
     $log->warning("no passwd") or return unless ( $opt{'pw'} );
 
     $dt = $entry->get if ( defined $entry );
-    $log->error($dt) and return if ( !defined $dt || length $dt ne 8 );
+    $log->error("date:", $dt || '') or return if ( !defined $dt || length $dt ne 8 );
 
     foreach my $key ( keys $new ) {
         if ( exists $old->{$key} && $old->{$key} eq $new->{$key} ) {
@@ -428,8 +428,8 @@ sub tcard_edit {
 
     login();
     $mech->follow_link( url => $tcardlnk );
-    $log->error( "Can't follow_link: ",
-        $tcardlnk, ": ", $mech->response->status_line )
+    $log->error( "Can't follow_link:",
+        $tcardlnk, ":", $mech->response->status_line )
       unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
 
@@ -465,7 +465,7 @@ sub tcard_edit {
             $token              => 1,
         ]
     );
-    $log->error( "Can't post: ", $tcard, ": ", $mech->response->status_line )
+    $log->error( "Can't post:", $tcard, ":", $mech->response->status_line )
       unless $mech->success;
     $log->info( encode( $enc, $mech->content ) );
 
@@ -476,7 +476,7 @@ sub get_time {
     my ( $entry, $dt, $old, $new ) = @_;
 
     $dt = $entry->get if ( defined $entry );
-    $log->error($dt) and return if ( !defined $dt || length $dt ne 8 );
+    $log->error("date:", $dt || '') or return if ( !defined $dt || length $dt ne 8 );
     my $year = substr( $dt, 0, 4 );
     my $mon  = substr( $dt, 4, 2 );
     my $day  = substr( $dt, 6, 2 );
@@ -486,8 +486,8 @@ sub get_time {
     login();
 
     $mech->follow_link( url => $tcardlnk );
-    $log->error( "Can't follow_link: ",
-        $tcardlnk, ": ", $mech->response->status_line )
+    $log->error( "Can't follow_link:",
+        $tcardlnk, ":", $mech->response->status_line )
       unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
 
@@ -497,7 +497,7 @@ sub get_time {
             date => $dt,
         },
     );
-    $log->error( "Can't submit_form: ", $mech->response->status_line )
+    $log->error( "Can't submit_form:", $mech->response->status_line )
       unless $mech->success;
     $log->debug( encode( $enc, decode( $dec, $mech->content ) ) );
 
