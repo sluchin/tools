@@ -10,19 +10,17 @@
 
 use strict;
 use warnings;
-use File::Basename;
-use File::Spec::Functions;
-use Getopt::Long;
-use Socket;
-use URI::Escape;
+use File::Basename qw/basename dirname/;
+use File::Spec::Functions qw/catfile/;
+use Getopt::Long qw/GetOptions Configure/;
 use Encode qw/encode decode decode_utf8/;
-use WWW::Mechanize;
+use WWW::Mechanize qw/post/;
 use HTTP::Cookies;
-use JSON;
-use YAML;
+use JSON qw/decode_json/;
+use YAML qw/LoadFile Dump/;
 use Log::Dispatch;
 
-our $VERSION = do { my @r = ( q$Revision: 0.02 $ =~ /\d+/g );
+our $VERSION = do { my @r = ( q$Revision: 0.03 $ =~ /\d+/g );
     sprintf "%d." . "%02d" x $#r, @r if (@r);
 };
 
@@ -97,7 +95,7 @@ EOF
 }
 
 # オプション引数
-Getopt::Long::Configure(qw{no_getopt_compat no_auto_abbrev no_ignore_case});
+Configure(qw{no_getopt_compat no_auto_abbrev no_ignore_case});
 GetOptions(
     'dir|d=s'   => \$opt{'dir'},
     'id|i=s'    => \$opt{'id'},
@@ -189,17 +187,36 @@ my $log = Log::Dispatch->new(
 $log->debug("@INC");
 
 # 設定ファイル読み込み(オプション引数の方が優先度高い)
-my $config;
-if ( !$opt{'id'} || !$opt{'pw'} || !$opt{'dir'} ) {
+my ( $config, $configfile );
+
+sub load_config {
 
     #　設定ファイル
     my $confdir = $ENV{'HOME'} || undef;
     $confdir = $progdir
       if ( !defined $confdir || !-f catfile( $confdir, $confname ) );
-    my $configfile = catfile( $confdir, $confname );
+    $configfile = catfile( $confdir, $confname );
     $log->info($configfile);
-    $config = eval { YAML::LoadFile($configfile) } || {};
+    $config = eval { LoadFile($configfile) } || {};
 }
+
+# 設定ファイル書き込み
+sub dump_config {
+    my ( $dir, $id, $pw ) = @_;
+    $log->debug( $dir->get || '', $id->get || '', $pw->get || '' );
+    load_config() if ( -f $configfile );
+    my $hash = {
+        'dir'    => ( $dir->get || $config->{'dir'} ),
+        'user'   => ( $id->get  || $config->{'user'} ),
+        'passwd' => ( $pw->get  || $config->{'passwd'} )
+    };
+    open my $cf, ">", $configfile;
+    print $cf Dump $hash;
+    close $cf;
+    load_config() if ( -f $configfile );
+}
+
+load_config() if ( !$opt{'id'} || !$opt{'pw'} || !$opt{'dir'} );
 
 # ディレクトリ
 $opt{'dir'} = $config->{'dir'} unless ( $opt{'dir'} );
@@ -332,7 +349,6 @@ sub logout {
     $log->error( "Can't logout:", $mech->response->status_line )
       unless $mech->success;
 
-    #    print encode( $enc, $mech->content ) if $opt{'vorbis'};
     $log->debug( encode( $enc, $mech->content ) );
 }
 
@@ -379,15 +395,17 @@ sub tcard_dl {
         return;
     }
     $dt = $entry->get if ( defined $entry );
-    $log->warning("date:", $dt || '') or return unless ( length $dt eq 8 );
+    $log->warning( "date:", $dt || '' ) or return unless ( length $dt eq 8 );
     my $filename = $opt{'dir'} . "/" . substr( $dt, 0, 6 ) . ".csv";
 
     login();
 
     $mech->follow_link( url => $tcardlnk );
-    $log->error( "Can't follow_link:",
-        $tcardlnk, ":", $mech->response->status_line )
-      unless $mech->success;
+    $log->error(
+        "Can't follow_link:",
+        $tcardlnk . ":",
+        $mech->response->status_line
+    ) unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
 
     $mech->submit_form(
@@ -412,7 +430,9 @@ sub tcard_edit {
     $log->warning("no passwd") or return unless ( $opt{'pw'} );
 
     $dt = $entry->get if ( defined $entry );
-    $log->warning("date:", $dt || '') or return if ( !defined $dt || length $dt ne 8 );
+    $log->warning( "date:", $dt || '' )
+      or return
+      if ( !defined $dt || length $dt ne 8 );
 
     foreach my $key ( keys $new ) {
         if ( exists $old->{$key} && $old->{$key} eq $new->{$key} ) {
@@ -429,9 +449,11 @@ sub tcard_edit {
 
     login();
     $mech->follow_link( url => $tcardlnk );
-    $log->error( "Can't follow_link:",
-        $tcardlnk, ":", $mech->response->status_line )
-      unless $mech->success;
+    $log->error(
+        "Can't follow_link:",
+        $tcardlnk . ":",
+        $mech->response->status_line
+    ) unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
 
     $mech->add_header(
@@ -466,7 +488,7 @@ sub tcard_edit {
             $token              => 1,
         ]
     );
-    $log->error( "Can't post:", $tcard, ":", $mech->response->status_line )
+    $log->error( "Can't post:", $tcard . ":", $mech->response->status_line )
       unless $mech->success;
     $log->info( encode( $enc, $mech->content ) );
 
@@ -480,7 +502,9 @@ sub get_time {
     $log->warning("no passwd") or return unless ( $opt{'pw'} );
 
     $dt = $entry->get if ( defined $entry );
-    $log->warning("date:", $dt || '') or return if ( !defined $dt || length $dt ne 8 );
+    $log->warning( "date:", $dt || '' )
+      or return
+      if ( !defined $dt || length $dt ne 8 );
     my $year = substr( $dt, 0, 4 );
     my $mon  = substr( $dt, 4, 2 );
     my $day  = substr( $dt, 6, 2 );
@@ -490,9 +514,11 @@ sub get_time {
     login();
 
     $mech->follow_link( url => $tcardlnk );
-    $log->error( "Can't follow_link:",
-        $tcardlnk, ":", $mech->response->status_line )
-      unless $mech->success;
+    $log->error(
+        "Can't follow_link:",
+        $tcardlnk . ":",
+        $mech->response->status_line
+    ) unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
 
     $mech->submit_form(
@@ -569,11 +595,22 @@ sub tk_all {
         return sprintf( "%04d%02d%02d", $yr, $mon, $day );
     }
 
+    sub dir_dialog {
+        my ( $tab, $ent ) = @_;
+        my $dir =
+          $tab->chooseDirectory( -title => decode_utf8("ディレクトリ") );
+        if ( defined $dir && $dir ne '' ) {
+            $ent->delete( 0, 'end' );
+            $ent->insert( 0, $dir );
+            $ent->xview('end');
+        }
+    }
+
     $new{'stime'} = $opt{'stime'} if ( defined $opt{'stime'} );
     $new{'etime'} = $opt{'etime'} if ( defined $opt{'etime'} );
 
     $mw = MainWindow->new();
-    $mw->title( decode_utf8("タイムカード") );
+    $mw->title( decode_utf8("タイムカード") . "  [v$VERSION]" );
     $mw->geometry("500x300");
     $mw->resizable( 0, 0 );
     if ( -f $iconfile ) {
@@ -585,7 +622,11 @@ sub tk_all {
 
     my $tab1 = $book->add( "Sheet 1", -label => decode_utf8("出社/退社") );
     my $tab2 = $book->add( "Sheet 2", -label => decode_utf8("編集") );
+    my $tab3 = $book->add( "Sheet 3", -label => decode_utf8("設定") );
+    #my $tab4 = $book->add( "Sheet 4", -label => decode_utf8("ログ") );
+    #my $tab5 = $book->add( "Sheet 5", -label => decode_utf8("一覧") );
 
+    # 出社/退社
     $tab1->Button(
         -text    => decode_utf8("出社"),
         -command => [ \&tcard, "go" ]
@@ -625,28 +666,29 @@ sub tk_all {
         -command => [ \&get_time, $entry2, $opt{'date'}, \%old, \%new ]
     )->grid( -row => 1, -column => 3, -padx => 5, -pady => 5 );
 
+    # 編集
     $tab2->Label( -text => decode_utf8("出社: ") )
-      ->grid( -row => 2, -column => 1, -pady => 5 );
-    $tab2->Entry( -textvariable => \$new{'stime'}, -width => 10 )
-      ->grid( -row => 2, -column => 2, -pady => 5 );
+      ->grid( -row => 2, -column => 1, -pady => 7 );
+    $tab2->Entry( -textvariable => \$new{'stime'}, -width => 12 )
+      ->grid( -row => 2, -column => 2, -pady => 7 );
     $tab2->Label( -text => decode_utf8("遅刻事由: ") )
-      ->grid( -row => 2, -column => 3, -padx => 5, -pady => 5 );
+      ->grid( -row => 2, -column => 3, -padx => 5, -pady => 7 );
     $tab2->Entry( -textvariable => \$new{'sreason'}, -width => 20 )
-      ->grid( -row => 2, -column => 4, -pady => 5 );
+      ->grid( -row => 2, -column => 4, -padx => 5, -pady => 7 );
 
     $tab2->Label( -text => decode_utf8("退社: ") )
-      ->grid( -row => 3, -column => 1, -pady => 5 );
-    $tab2->Entry( -textvariable => \$new{'etime'}, -width => 10 )
-      ->grid( -row => 3, -column => 2, -pady => 5 );
+      ->grid( -row => 3, -column => 1, -pady => 7 );
+    $tab2->Entry( -textvariable => \$new{'etime'}, -width => 12 )
+      ->grid( -row => 3, -column => 2, -pady => 7 );
     $tab2->Label( -text => decode_utf8("早退事由: ") )
-      ->grid( -row => 3, -column => 3, -padx => 5, -pady => 5 );
+      ->grid( -row => 3, -column => 3, -padx => 5, -pady => 7 );
     $tab2->Entry( -textvariable => \$new{'ereason'}, -width => 20 )
-      ->grid( -row => 3, -column => 4, -pady => 5 );
+      ->grid( -row => 3, -column => 4, -pady => 7 );
 
     $tab2->Label( -text => decode_utf8("備考: ") )
-      ->grid( -row => 4, -column => 1, -pady => 5 );
-    $tab2->Entry( -textvariable => \$new{'note'}, -width => 42 )
-      ->grid( -row => 4, -column => 2, -columnspan => 3, -pady => 5 );
+      ->grid( -row => 4, -column => 1, -padx => 5, -pady => 10 );
+    $tab2->Entry( -textvariable => \$new{'note'}, -width => 45 )
+      ->grid( -row => 4, -column => 2, -columnspan => 3, -pady => 7 );
 
     $tab2->Button(
         -text    => decode_utf8("編集"),
@@ -655,6 +697,36 @@ sub tk_all {
 
     $tab2->Button( -text => decode_utf8("終了"), -command => \&exit )
       ->grid( -row => 6, -column => 5, -padx => 15, -pady => 15 );
+
+    # 設定
+    $tab3->Label( -text => decode_utf8("ディレクトリ: ") )
+      ->grid( -row => 1, -column => 1, -pady => 7 );
+    my $entdir =
+      $tab3->Entry( -width => 30 )
+      ->grid( -row => 1, -column => 2, -columnspan => 2, -pady => 7 );
+    $tab3->Button(
+        -text    => decode_utf8("選択"),
+        -command => [ \&dir_dialog, $tab3, $entdir ]
+    )->grid( -row => 1, -column => 4, -pady => 10 );
+
+    $tab3->Label( -text => decode_utf8("ユーザ名: ") )
+      ->grid( -row => 2, -column => 1, -pady => 7 );
+    my $entid =
+      $tab3->Entry( -width => 20 )->grid( -row => 2, -column => 2, -pady => 7 );
+
+    $tab3->Label( -text => decode_utf8("パスワード: ") )
+      ->grid( -row => 3, -column => 1, -pady => 7 );
+    my $entpw =
+      $tab3->Entry( -width => 20, -show => '*' )
+      ->grid( -row => 3, -column => 2, -pady => 7 );
+
+    $tab3->Button(
+        -text    => decode_utf8("保存"),
+        -command => [ \&dump_config, $entdir, $entid, $entpw ]
+    )->grid( -row => 4, -column => 3, -pady => 10 );
+
+    $tab3->Button( -text => decode_utf8("終了"), -command => \&exit )
+      ->grid( -row => 5, -column => 5, -padx => 15, -pady => 15 );
 
     MainLoop();
 }
