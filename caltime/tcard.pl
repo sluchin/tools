@@ -22,7 +22,7 @@ use JSON;
 use YAML;
 use Log::Dispatch;
 
-our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
+our $VERSION = do { my @r = ( q$Revision: 0.02 $ =~ /\d+/g );
     sprintf "%d." . "%02d" x $#r, @r if (@r);
 };
 
@@ -369,8 +369,9 @@ sub tcard {
 sub tcard_dl {
     my ( $entry, $dt ) = @_;
 
-    $log->warning("no user")   or return unless ( $opt{'id'} );
-    $log->warning("no passwd") or return unless ( $opt{'pw'} );
+    $log->warning("no user")    or return unless ( $opt{'id'} );
+    $log->warning("no passwd")  or return unless ( $opt{'pw'} );
+    $log->error("no directory") or return unless ( -d $opt{'dir'} );
 
     # ディレクトリの存在確認
     unless ( -d $opt{'dir'} ) {
@@ -378,7 +379,7 @@ sub tcard_dl {
         return;
     }
     $dt = $entry->get if ( defined $entry );
-    $log->error("date:", $dt || '') or return unless ( length $dt eq 8 );
+    $log->warning("date:", $dt || '') or return unless ( length $dt eq 8 );
     my $filename = $opt{'dir'} . "/" . substr( $dt, 0, 6 ) . ".csv";
 
     login();
@@ -411,7 +412,7 @@ sub tcard_edit {
     $log->warning("no passwd") or return unless ( $opt{'pw'} );
 
     $dt = $entry->get if ( defined $entry );
-    $log->error("date:", $dt || '') or return if ( !defined $dt || length $dt ne 8 );
+    $log->warning("date:", $dt || '') or return if ( !defined $dt || length $dt ne 8 );
 
     foreach my $key ( keys $new ) {
         if ( exists $old->{$key} && $old->{$key} eq $new->{$key} ) {
@@ -475,8 +476,11 @@ sub tcard_edit {
 sub get_time {
     my ( $entry, $dt, $old, $new ) = @_;
 
+    $log->warning("no user")   or return unless ( $opt{'id'} );
+    $log->warning("no passwd") or return unless ( $opt{'pw'} );
+
     $dt = $entry->get if ( defined $entry );
-    $log->error("date:", $dt || '') or return if ( !defined $dt || length $dt ne 8 );
+    $log->warning("date:", $dt || '') or return if ( !defined $dt || length $dt ne 8 );
     my $year = substr( $dt, 0, 4 );
     my $mon  = substr( $dt, 4, 2 );
     my $day  = substr( $dt, 6, 2 );
