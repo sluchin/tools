@@ -33,9 +33,9 @@ BEGIN {
     $progdir = dirname( readlink($0) || $0 );
     push( @INC, $progdir . '/lib' );
 }
-my $logfile = catfile( $progdir, "tcard.log" );
+my $logfile  = catfile( $progdir, "tcard.log" );
 my $confname = "tcard.conf";
-my$iconfile = catfile( $progdir, "icon", "icon.xpm" );
+my $iconfile = catfile( $progdir, "icon", "icon.xpm" );
 
 # ステータス
 my %stathash = (
@@ -120,10 +120,31 @@ GetOptions(
 usage() and exit( $stathash{'EX_OK'} ) if ( $opt{'help'} );
 print_version() if ( $opt{'version'} );
 
-# Tk ない場合, コマンドライン
+# Tk ない場合, コマンドラインのみ
 eval 'use Tk; 1'            || ( $opt{'nogui'} = 1 );
 eval 'use Tk::NoteBook; 1'  || ( $opt{'nogui'} = 1 );
 eval 'use Tk::DateEntry; 1' || ( $opt{'nogui'} = 1 );
+
+# メッセージ
+my $mw;
+
+sub messagebox {
+    my ( $level, $mes ) = @_;
+    if ( Exists($mw) ) {
+        $mw->messageBox(
+            -type    => 'Ok',
+            -icon    => 'error',
+            -title   => decode_utf8("エラー"),
+            -message => $mes || ''
+        ) if ( lc $level eq 'error' );
+        $mw->messageBox(
+            -type    => 'Ok',
+            -icon    => 'warning',
+            -title   => decode_utf8("警告"),
+            -message => $mes || ''
+        ) if ( lc $level eq 'warning' );
+    }
+}
 
 # ログ出力
 sub filecb {
@@ -136,6 +157,7 @@ sub filecb {
     }
     chomp( $args{'message'} );
     my @time = localtime;
+    messagebox( $args{'level'}, $args{'message'} );
     sprintf "%04d-%02d-%02d %02d:%02d:%02d [%s] %s at %s line %d.\n",
       $time[5] + 1900, $time[4] + 1, @time[ 3, 2, 1, 0 ],
       $args{'level'}, $args{'message'}, $file, $line;
@@ -182,17 +204,15 @@ if ( !$opt{'id'} || !$opt{'pw'} || !$opt{'dir'} ) {
 # ディレクトリ
 $opt{'dir'} = $config->{'dir'} unless ( $opt{'dir'} );
 $opt{'dir'} = "." unless ( $opt{'dir'} );
-$log->info( $opt{'dir'} );
+$log->info( "dir:", $opt{'dir'} || '' );
 
 # ユーザ
 $opt{'id'} = $config->{'user'} unless ( $opt{'id'} );
-die "no user" unless ( $opt{'id'} );
-$log->info( $opt{'id'} );
+$log->info( "id:", $opt{'id'} || '' );
 
 # パスワード
 $opt{'pw'} = $config->{'passwd'} unless ( $opt{'pw'} );
-die "no passwd" unless ( $opt{'pw'} );
-$log->info( $opt{'pw'} );
+$log->info( "pw:", $opt{'pw'} || '' );
 
 # エンコード
 my ( $enc, $dec );
@@ -226,7 +246,7 @@ else {
     my ( undef, undef, undef, $mday, $mon, $year ) = localtime(time);
     $opt{'date'} = sprintf( "%04d%02d%02d", $year + 1900, $mon + 1, $mday );
 }
-$log->debug( $opt{'date'} );
+$log->debug( "date:", $opt{'date'} || '' );
 
 my $cookie_jar;
 my $mech;
@@ -319,6 +339,9 @@ sub logout {
 sub tcard {
     my $arg = shift;
 
+    $log->warning("no user")   or return unless ( $opt{'id'} );
+    $log->warning("no passwd") or return unless ( $opt{'pw'} );
+
     login();
     $mech->add_header(
         'Accept'        => 'application/json,text/javascript,*/*',
@@ -345,6 +368,9 @@ sub tcard {
 
 sub tcard_dl {
     my ( $entry, $dt ) = @_;
+
+    $log->warning("no user")   or return unless ( $opt{'id'} );
+    $log->warning("no passwd") or return unless ( $opt{'pw'} );
 
     # ディレクトリの存在確認
     unless ( -d $opt{'dir'} ) {
@@ -380,6 +406,9 @@ sub tcard_dl {
 
 sub tcard_edit {
     my ( $entry, $dt, $old, $new ) = @_;
+
+    $log->warning("no user")   or return unless ( $opt{'id'} );
+    $log->warning("no passwd") or return unless ( $opt{'pw'} );
 
     $dt = $entry->get if ( defined $entry );
     $log->error($dt) and return if ( !defined $dt || length $dt ne 8 );
@@ -539,13 +568,13 @@ sub tk_all {
     $new{'stime'} = $opt{'stime'} if ( defined $opt{'stime'} );
     $new{'etime'} = $opt{'etime'} if ( defined $opt{'etime'} );
 
-    my $mw = MainWindow->new();
+    $mw = MainWindow->new();
     $mw->title( decode_utf8("タイムカード") );
     $mw->geometry("500x300");
     $mw->resizable( 0, 0 );
-    if (-f $iconfile) {
-        my $image = $mw->Pixmap(-file => $iconfile);
-        $mw->Icon(-image => $image);
+    if ( -f $iconfile ) {
+        my $image = $mw->Pixmap( -file => $iconfile );
+        $mw->Icon( -image => $image );
     }
 
     my $book = $mw->NoteBook()->pack( -fill => 'both', -expand => 1 );
