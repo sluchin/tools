@@ -1,12 +1,38 @@
-##
-# @file caltime.pm
+# COPYRIGHT:
 #
-# 勤務時間を計算する.
+# Copyright (c) 2013 Tetsuya Higashi
+# All rights reserved.
 #
-# @author Tetsuya Higashi
+# LICENSE:
 #
+# This work is made available to you under the terms of Version 2 of
+# the GNU General Public License. A copy of that license should have
+# been provided with this software, but in any event can be snarfed
+# from www.gnu.org.
+#
+# This work is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 or visit their web page on the internet at
+# http://www.gnu.org/licenses/old-licenses/gpl-2.0.html.
 
-package caltime;
+=encoding utf-8
+
+=head1 NAME
+
+Caltime - 勤務時間を計算する
+
+=head1 SYNOPSIS
+
+
+=cut
+
+package Caltime;
 
 use strict;
 use warnings;
@@ -66,9 +92,14 @@ my @resttime = (
 our ( $common_sum,  $over_sum,      $late_sum );
 our ( $holiday_sum, $holi_late_sum, $worktime );
 
-##
-# 通常時間を算出
-#
+=head1 METHODS
+
+=head2 common_time
+
+通常時間を算出
+
+=cut
+
 sub common_time {
     my $offset = shift;
     my @result;
@@ -84,9 +115,12 @@ sub common_time {
     return @result;
 }
 
-##
-# 残業時間を算出
-#
+=head2 over_time
+
+残業時間を算出
+
+=cut
+
 sub over_time {
     my @common = @_;
     my @result;
@@ -102,9 +136,12 @@ sub over_time {
     return @result;
 }
 
-##
-# 計算
-#
+=head2 calc_sum
+
+計算
+
+=cut
+
 sub calc_sum {
     my ( $begin, $end, $offset, $holiday ) = @_;
     my ( $common, $over, $late, $rest );
@@ -195,9 +232,12 @@ sub calc_sum {
     return $output;
 }
 
-##
-# 時刻を変換(00:00 = 24.00)
-#
+=head2 conv_hour
+
+時刻を変換(00:00 = 24.00)
+
+=cut
+
 sub conv_hour {
     my ( $time, $offset ) = @_;
     my ( $h, $m );
@@ -225,9 +265,12 @@ sub conv_hour {
     return $result;
 }
 
-##
-# 分を変換(9:15 = 9.25)
-#
+=head2 conv_min
+
+分を変換(9:15 = 9.25)
+
+=cut
+
 sub conv_min {
     my ( $time, $offset ) = @_;
     my ( $h, $m );
@@ -265,9 +308,12 @@ sub conv_min {
     return $result;
 }
 
-##
-# 丸める
-#
+=head2 round_time
+
+丸める
+
+=cut
+
 sub round_time {
     my $time = shift;
 
@@ -281,9 +327,12 @@ sub round_time {
     return "00";
 }
 
-##
-# 範囲内の場合,時間を加算
-#
+=head2 add_time
+
+範囲内の場合, 時間を加算
+
+=cut
+
 sub add_time {
     my $begin   = shift;
     my $end     = shift;
@@ -301,9 +350,12 @@ sub add_time {
     return $addtime;
 }
 
-##
-# 時間を文字列に変換する
-#
+=head2 val2str
+
+時間を文字列に変換する
+
+=cut
+
 sub val2str {
     my $time = shift;
     my ( $h, $m );
@@ -323,9 +375,12 @@ sub val2str {
     return $result;
 }
 
-##
-# ディレクトリ配下のファイルをリストにして返す
-#
+=head2 recursive_dir
+
+ディレクトリ配下のファイルをリストにして返す
+
+=cut
+
 sub recursive_dir {
     my $dir    = shift;
     my @result = ();

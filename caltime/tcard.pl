@@ -75,23 +75,9 @@ sub print_version() {
 # ヘルプ表示
 #
 sub usage() {
-    print << "EOF"
-Usage: $progname [options]
-   -d, --dir=drectory  Output directory.
-   -i, --id=id         Set id.
-   -w, --pw=password   Set pw.
-   -t, --date=date     Set date.
-   -s, --stime=time    Edit time arriving at work.
-   -e, --etime=time    Edit time getting away.
-       --start         Start time card.
-       --stop          Stop time card.
-       --download      Download time card.
-       --edit          Edit time card.
-       --nogui         Command line interface.
-   -v, --vorbis        Display extra information.
-   -h, --help          Display this help and exit.
-   -V, --version       Output version information and exit.
-EOF
+    require Pod::Usage;
+    import Pod::Usage;
+    pod2usage();
 }
 
 # オプション引数
@@ -122,6 +108,7 @@ print_version() if ( $opt{'version'} );
 eval 'use Tk; 1'            || ( $opt{'nogui'} = 1 );
 eval 'use Tk::NoteBook; 1'  || ( $opt{'nogui'} = 1 );
 eval 'use Tk::DateEntry; 1' || ( $opt{'nogui'} = 1 );
+eval 'use Tk::Table; 1'     || ( $opt{'nogui'} = 1 );
 
 # メッセージ
 my $mw;
@@ -203,17 +190,21 @@ sub load_config {
 # 設定ファイル書き込み
 sub dump_config {
     my ( $dir, $id, $pw ) = @_;
+
     $log->debug( $dir->get || '', $id->get || '', $pw->get || '' );
     load_config() if ( -f $configfile );
+    $opt{'dir'} = $dir->get || $config->{'dir'};
+    $opt{'id'} = $id->get || $config->{'user'};
+    $opt{'pw'} = $pw->get || $config->{'passwd'};
     my $hash = {
-        'dir'    => ( $dir->get || $config->{'dir'} ),
-        'user'   => ( $id->get  || $config->{'user'} ),
-        'passwd' => ( $pw->get  || $config->{'passwd'} )
+        'dir'    => $opt{'dir'},
+        'user'   => $opt{'id'},
+        'passwd' => $opt{'pw'},
     };
-    open my $cf, ">", $configfile;
+    open my $cf, ">", $configfile
+        or $log->error("open[$configfile]:", $!);
     print $cf Dump $hash;
     close $cf;
-    load_config() if ( -f $configfile );
 }
 
 load_config() if ( !$opt{'id'} || !$opt{'pw'} || !$opt{'dir'} );
@@ -403,7 +394,7 @@ sub tcard_dl {
     $mech->follow_link( url => $tcardlnk );
     $log->error(
         "Can't follow_link:",
-        $tcardlnk . ":",
+        "$tcardlnk:",
         $mech->response->status_line
     ) unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
@@ -516,7 +507,7 @@ sub get_time {
     $mech->follow_link( url => $tcardlnk );
     $log->error(
         "Can't follow_link:",
-        $tcardlnk . ":",
+        "$tcardlnk:",
         $mech->response->status_line
     ) unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
@@ -622,9 +613,10 @@ sub tk_all {
 
     my $tab1 = $book->add( "Sheet 1", -label => decode_utf8("出社/退社") );
     my $tab2 = $book->add( "Sheet 2", -label => decode_utf8("編集") );
-    my $tab3 = $book->add( "Sheet 3", -label => decode_utf8("設定") );
+    my $tab3 = $book->add( "Sheet 3", -label => decode_utf8("一覧") );
+    my $tab4 = $book->add( "Sheet 4", -label => decode_utf8("設定") );
     #my $tab4 = $book->add( "Sheet 4", -label => decode_utf8("ログ") );
-    #my $tab5 = $book->add( "Sheet 5", -label => decode_utf8("一覧") );
+
 
     # 出社/退社
     $tab1->Button(
@@ -699,33 +691,33 @@ sub tk_all {
       ->grid( -row => 6, -column => 5, -padx => 15, -pady => 15 );
 
     # 設定
-    $tab3->Label( -text => decode_utf8("ディレクトリ: ") )
+    $tab4->Label( -text => decode_utf8("ディレクトリ: ") )
       ->grid( -row => 1, -column => 1, -pady => 7 );
     my $entdir =
-      $tab3->Entry( -width => 30 )
+      $tab4->Entry( -width => 30 )
       ->grid( -row => 1, -column => 2, -columnspan => 2, -pady => 7 );
-    $tab3->Button(
+    $tab4->Button(
         -text    => decode_utf8("選択"),
-        -command => [ \&dir_dialog, $tab3, $entdir ]
+        -command => [ \&dir_dialog, $tab4, $entdir ]
     )->grid( -row => 1, -column => 4, -pady => 10 );
 
-    $tab3->Label( -text => decode_utf8("ユーザ名: ") )
+    $tab4->Label( -text => decode_utf8("ユーザ名: ") )
       ->grid( -row => 2, -column => 1, -pady => 7 );
     my $entid =
-      $tab3->Entry( -width => 20 )->grid( -row => 2, -column => 2, -pady => 7 );
+      $tab4->Entry( -width => 20 )->grid( -row => 2, -column => 2, -pady => 7 );
 
-    $tab3->Label( -text => decode_utf8("パスワード: ") )
+    $tab4->Label( -text => decode_utf8("パスワード: ") )
       ->grid( -row => 3, -column => 1, -pady => 7 );
     my $entpw =
-      $tab3->Entry( -width => 20, -show => '*' )
+      $tab4->Entry( -width => 20, -show => '*' )
       ->grid( -row => 3, -column => 2, -pady => 7 );
 
-    $tab3->Button(
+    $tab4->Button(
         -text    => decode_utf8("保存"),
         -command => [ \&dump_config, $entdir, $entid, $entpw ]
     )->grid( -row => 4, -column => 3, -pady => 10 );
 
-    $tab3->Button( -text => decode_utf8("終了"), -command => \&exit )
+    $tab4->Button( -text => decode_utf8("終了"), -command => \&exit )
       ->grid( -row => 5, -column => 5, -padx => 15, -pady => 15 );
 
     MainLoop();
