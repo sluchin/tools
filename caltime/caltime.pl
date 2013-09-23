@@ -1,30 +1,26 @@
 #!/usr/bin/perl -w
-#perl -w
-#C:\Perl64\bin\perl -w
-
-##
-# @file caltime.pl
+# COPYRIGHT:
 #
-# 勤務時間を計算する.
+# Copyright (c) 2013 Tetsuya Higashi
+# All rights reserved.
 #
-# @author Tetsuya Higashi
+# LICENSE:
 #
-# perldoc caltime.pl
+# This work is made available to you under the terms of Version 2 of
+# the GNU General Public License. A copy of that license should have
+# been provided with this software, but in any event can be snarfed
+# from www.gnu.org.
 #
-# 入力
-# グループ,チームA,氏名,名無し,,,,,,,,,,,,
-# 日,曜,始業時刻,,,遅刻事由,外出,,戻り,,終業時刻,,,早退事由,欠勤事由,備考
-# 2013/07/01,月,09:00,修,遅,,,,00:00,修,18:00,修,,,,
-# 2013/07/01,月,,,,,,,00:00,修,,,,,,
-# 2013/07/02,火,09:00,,,,,,,,18:00,修,,,,
-# 2013/07/03,水,09:00,修,,,,,,,19:30,修,,,,
+# This work is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
 #
-# 出力
-# 日,曜,始業時刻,終業時刻,通常,残業,深夜,休日,休日+深夜,休憩,合計
-# 2013/07/01,月,09.00,18.00,8,0,0,,,1,8
-# 2013/07/02,火,09.00,18.00,8,0,0,,,1,8
-# 2013/07/03,水,09.00,19.50,8,1,0,,,1.5,9
-#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 or visit their web page on the internet at
+# http://www.gnu.org/licenses/old-licenses/gpl-2.0.html.
 
 use strict;
 use warnings;
@@ -44,7 +40,7 @@ BEGIN {
     $progdir = dirname( readlink($0) || $0 );
     push( @INC, $progdir . '/lib' );
 }
-use caltime;
+use Caltime;
 
 # ステータス
 my %stathash = (
@@ -52,9 +48,8 @@ my %stathash = (
     'EX_NG' => 1,    # 異常終了
 );
 
-##
+
 # バージョン情報表示
-#
 sub print_version {
     print "$progname version "
       . $VERSION . "\n"
@@ -64,21 +59,12 @@ sub print_version {
     exit( $stathash{'EX_OK'} );
 }
 
-##
+
 # ヘルプ表示
-#
 sub usage {
-    print << "EOF"
-Usage: $progname [options] [-d directory|file]
- Options:
-   -d, --dir=directory    Calcuration files from directory.
-   -o, --offset           Offset start time(-1=8:00).
-   -g, --group            Calcuration for group.
-   -w, --weekly           Calcuration weekly.
-   -v, --verbose          Display extra information.
-   -h, --help             Display this help and exit.
-   -V, --version          Output version information and exit.
-EOF
+    require Pod::Usage;
+    import Pod::Usage;
+    pod2usage();
 }
 
 # デフォルトオプション
@@ -138,18 +124,14 @@ my @namelst;
 my @filelst;
 my @datelst;
 
-##
 # 初期化
-#
 sub init {
     $common_sum = $over_sum = $late_sum = $holiday_sum = 0.0;
     $holi_late_sum = $worktime = 0.0;
     @datelst = ();
 }
 
-##
 # 週単位の合計文字列
-#
 sub sum_weekly {
     return
         $datelst[0] . "-"
@@ -168,9 +150,8 @@ sub sum_weekly {
       . $worktime . "\n";
 }
 
-##
+
 # 結果の表示
-#
 sub print_result {
     my ( $name, $date ) = @_;
 
@@ -184,9 +165,7 @@ sub print_result {
     printf "|%s\t|%6.2f|\n\n", encode( $enc, "合計" ),  $worktime;
 }
 
-##
 # ディレクトリ配下のファイルを処理
-#
 sub read_files {
     my $basedir = shift;
     my $output;
@@ -280,9 +259,8 @@ sub read_files {
     }
 }
 
-##
+
 # ファイルを処理
-#
 sub read_file {
     my $file = shift;
     my ( $in, $out, $output );
@@ -447,6 +425,8 @@ exit( $stathash{'EX_OK'} );
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 caltime.pl - calculation work time.
@@ -472,7 +452,7 @@ caltime.pl [options] [-d directory|file]
 
 B<This program> calculation work time.
 
-Example:
+=head1 EXAMPLE
 
 ./caltime.pl -d \\192.168.1.2\share\worktime\ -g
 
