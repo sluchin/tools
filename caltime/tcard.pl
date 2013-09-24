@@ -31,6 +31,7 @@ BEGIN {
     $progdir = dirname( readlink($0) || $0 );
     push( @INC, $progdir . '/lib' );
 }
+
 my $logfile  = catfile( $progdir, "tcard.log" );
 my $confname = "tcard.conf";
 my $iconfile = catfile( $progdir, "icon", "icon.xpm" );
@@ -109,6 +110,10 @@ eval 'use Tk; 1'            || ( $opt{'nogui'} = 1 );
 eval 'use Tk::NoteBook; 1'  || ( $opt{'nogui'} = 1 );
 eval 'use Tk::DateEntry; 1' || ( $opt{'nogui'} = 1 );
 eval 'use Tk::Table; 1'     || ( $opt{'nogui'} = 1 );
+
+use Tk::Tcard;
+
+print $opt{'nogui'} . "\n";
 
 # メッセージ
 my $mw;
@@ -576,27 +581,6 @@ sub tk_part {
 sub tk_all {
     my ( %old, %new );
 
-    sub parse {
-        my ( $day, $mon, $yr ) = split '-', $_[0];
-        return ( $yr, $mon, $day );
-    }
-
-    sub format {
-        my ( $yr, $mon, $day ) = @_;
-        return sprintf( "%04d%02d%02d", $yr, $mon, $day );
-    }
-
-    sub dir_dialog {
-        my ( $tab, $ent ) = @_;
-        my $dir =
-          $tab->chooseDirectory( -title => decode_utf8("ディレクトリ") );
-        if ( defined $dir && $dir ne '' ) {
-            $ent->delete( 0, 'end' );
-            $ent->insert( 0, $dir );
-            $ent->xview('end');
-        }
-    }
-
     $new{'stime'} = $opt{'stime'} if ( defined $opt{'stime'} );
     $new{'etime'} = $opt{'etime'} if ( defined $opt{'etime'} );
 
@@ -613,112 +597,13 @@ sub tk_all {
 
     my $tab1 = $book->add( "Sheet 1", -label => decode_utf8("出社/退社") );
     my $tab2 = $book->add( "Sheet 2", -label => decode_utf8("編集") );
-    my $tab3 = $book->add( "Sheet 3", -label => decode_utf8("一覧") );
-    my $tab4 = $book->add( "Sheet 4", -label => decode_utf8("設定") );
-    #my $tab4 = $book->add( "Sheet 4", -label => decode_utf8("ログ") );
+    my $tab3 = $book->add( "Sheet 4", -label => decode_utf8("設定") );
+    #my $tab4 = $book->add( "Sheet 3", -label => decode_utf8("一覧") );
+    #my $tab5 = $book->add( "Sheet 4", -label => decode_utf8("ログ") );
 
-
-    # 出社/退社
-    $tab1->Button(
-        -text    => decode_utf8("出社"),
-        -command => [ \&tcard, "go" ]
-    )->grid( -row => 1, -column => 3, -padx => 15, -pady => 15 );
-    $tab1->Button(
-        -text    => decode_utf8("退社"),
-        -command => [ \&tcard, "leave" ]
-    )->grid( -row => 2, -column => 3, -padx => 15, -pady => 15 );
-
-    $tab1->Label( -text => decode_utf8("日付: ") )
-      ->grid( -row => 3, -column => 1 );
-    my $entry1 = $tab1->DateEntry(
-        -textvariable => $opt{'date'},
-        -width        => 10,
-        -parsecmd     => \&parse,
-        -formatcmd    => \&format
-    )->pack;
-    $entry1->grid( -row => 3, -column => 2, -padx => 15, -pady => 15 );
-    $tab1->Button(
-        -text    => decode_utf8("ダウンロード"),
-        -command => [ \&tcard_dl, $entry1, $opt{'date'} ]
-    )->grid( -row => 3, -column => 3, -padx => 15, -pady => 15 );
-    $tab1->Button( -text => decode_utf8("終了"), -command => \&exit )
-      ->grid( -row => 4, -column => 4, -padx => 15, -pady => 15 );
-
-    $tab2->Label( -text => decode_utf8("日付: ") )
-      ->grid( -row => 1, -column => 1, -pady => 5 );
-    my $entry2 = $tab2->DateEntry(
-        -textvariable => $opt{'date'},
-        -width        => 10,
-        -parsecmd     => \&parse,
-        -formatcmd    => \&format
-    )->pack;
-    $entry2->grid( -row => 1, -column => 2, -pady => 5 );
-    $tab2->Button(
-        -text    => decode_utf8("読込"),
-        -command => [ \&get_time, $entry2, $opt{'date'}, \%old, \%new ]
-    )->grid( -row => 1, -column => 3, -padx => 5, -pady => 5 );
-
-    # 編集
-    $tab2->Label( -text => decode_utf8("出社: ") )
-      ->grid( -row => 2, -column => 1, -pady => 7 );
-    $tab2->Entry( -textvariable => \$new{'stime'}, -width => 12 )
-      ->grid( -row => 2, -column => 2, -pady => 7 );
-    $tab2->Label( -text => decode_utf8("遅刻事由: ") )
-      ->grid( -row => 2, -column => 3, -padx => 5, -pady => 7 );
-    $tab2->Entry( -textvariable => \$new{'sreason'}, -width => 20 )
-      ->grid( -row => 2, -column => 4, -padx => 5, -pady => 7 );
-
-    $tab2->Label( -text => decode_utf8("退社: ") )
-      ->grid( -row => 3, -column => 1, -pady => 7 );
-    $tab2->Entry( -textvariable => \$new{'etime'}, -width => 12 )
-      ->grid( -row => 3, -column => 2, -pady => 7 );
-    $tab2->Label( -text => decode_utf8("早退事由: ") )
-      ->grid( -row => 3, -column => 3, -padx => 5, -pady => 7 );
-    $tab2->Entry( -textvariable => \$new{'ereason'}, -width => 20 )
-      ->grid( -row => 3, -column => 4, -pady => 7 );
-
-    $tab2->Label( -text => decode_utf8("備考: ") )
-      ->grid( -row => 4, -column => 1, -padx => 5, -pady => 10 );
-    $tab2->Entry( -textvariable => \$new{'note'}, -width => 45 )
-      ->grid( -row => 4, -column => 2, -columnspan => 3, -pady => 7 );
-
-    $tab2->Button(
-        -text    => decode_utf8("編集"),
-        -command => [ \&tcard_edit, $entry2, $opt{'date'}, \%old, \%new ]
-    )->grid( -row => 5, -column => 4, -pady => 10 );
-
-    $tab2->Button( -text => decode_utf8("終了"), -command => \&exit )
-      ->grid( -row => 6, -column => 5, -padx => 15, -pady => 15 );
-
-    # 設定
-    $tab4->Label( -text => decode_utf8("ディレクトリ: ") )
-      ->grid( -row => 1, -column => 1, -pady => 7 );
-    my $entdir =
-      $tab4->Entry( -width => 30 )
-      ->grid( -row => 1, -column => 2, -columnspan => 2, -pady => 7 );
-    $tab4->Button(
-        -text    => decode_utf8("選択"),
-        -command => [ \&dir_dialog, $tab4, $entdir ]
-    )->grid( -row => 1, -column => 4, -pady => 10 );
-
-    $tab4->Label( -text => decode_utf8("ユーザ名: ") )
-      ->grid( -row => 2, -column => 1, -pady => 7 );
-    my $entid =
-      $tab4->Entry( -width => 20 )->grid( -row => 2, -column => 2, -pady => 7 );
-
-    $tab4->Label( -text => decode_utf8("パスワード: ") )
-      ->grid( -row => 3, -column => 1, -pady => 7 );
-    my $entpw =
-      $tab4->Entry( -width => 20, -show => '*' )
-      ->grid( -row => 3, -column => 2, -pady => 7 );
-
-    $tab4->Button(
-        -text    => decode_utf8("保存"),
-        -command => [ \&dump_config, $entdir, $entid, $entpw ]
-    )->grid( -row => 4, -column => 3, -pady => 10 );
-
-    $tab4->Button( -text => decode_utf8("終了"), -command => \&exit )
-      ->grid( -row => 5, -column => 5, -padx => 15, -pady => 15 );
+    tab_setime($tab1, $opt{'date'}, \&tcard, \&tcard_dl);
+    tab_edit($tab2, $opt{'date'}, \%old, \%new, \&get_time, \&tcard_edit);
+    tab_conf($tab3, \&dump_config);
 
     MainLoop();
 }
