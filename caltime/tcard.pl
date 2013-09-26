@@ -60,9 +60,7 @@ my %opt = (
     'version'  => 0
 );
 
-##
 # バージョン情報表示
-#
 sub print_version() {
     print "$progname version "
       . $VERSION . "\n"
@@ -72,9 +70,7 @@ sub print_version() {
     exit( $stathash{'EX_OK'} );
 }
 
-##
 # ヘルプ表示
-#
 sub usage() {
     require Pod::Usage;
     import Pod::Usage;
@@ -199,15 +195,15 @@ sub dump_config {
     $log->debug( $dir->get || '', $id->get || '', $pw->get || '' );
     load_config() if ( -f $configfile );
     $opt{'dir'} = $dir->get || $config->{'dir'};
-    $opt{'id'} = $id->get || $config->{'user'};
-    $opt{'pw'} = $pw->get || $config->{'passwd'};
+    $opt{'id'}  = $id->get  || $config->{'user'};
+    $opt{'pw'}  = $pw->get  || $config->{'passwd'};
     my $hash = {
         'dir'    => $opt{'dir'},
         'user'   => $opt{'id'},
         'passwd' => $opt{'pw'},
     };
     open my $cf, ">", $configfile
-        or $log->error("open[$configfile]:", $!);
+      or $log->error( "open[$configfile]:", $! );
     print $cf Dump $hash;
     close $cf;
 }
@@ -265,7 +261,7 @@ my $cookie_jar;
 my $mech;
 my $session_id;
 my ( $token, $prid );
-my $json;
+my ( %old,   %new );
 
 sub login {
 
@@ -294,19 +290,19 @@ sub login {
     $log->error( "Can't submit_form:", $mech->response->status_line )
       unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
-    $json = decode_json( encode( 'utf8', $mech->content ) )
+    my $json = decode_json( encode( $enc, $mech->content ) )
       or $log->error( "malformed JSON string: $!:",
-        encode( 'utf8', $mech->content ) );
+        encode( $enc, $mech->content ) );
 
     $session_id =
         "dnzSid="
-      . ( encode( 'utf8', $json->{'rssid'} ) || "" ) . ";"
+      . ( encode( $enc, $json->{'rssid'} ) || "" ) . ";"
       . "dnzToken="
-      . ( encode( 'utf8', $json->{'STOKEN'} ) || "" ) . ";"
+      . ( encode( $enc, $json->{'STOKEN'} ) || "" ) . ";"
       . "dnzSv="
-      . ( encode( 'utf8', $json->{'dnzSv'} ) || "" ) . ";"
+      . ( encode( $enc, $json->{'dnzSv'} ) || "" ) . ";"
       . "dnzInfo="
-      . ( encode( 'utf8', $json->{'id'} ) || "" );
+      . ( encode( $enc, $json->{'id'} ) || "" );
     $token = $json->{'STOKEN'};
     $prid  = $json->{'id'};
 
@@ -366,7 +362,7 @@ sub tcard {
     my $response = $mech->post(
         $tcard,
         [
-            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\""
+            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\"" 
               . $arg
               . "\"},\"1\":{\"cmd\":\"tcardcmdtick\"}}",
             $token => 1
@@ -374,6 +370,12 @@ sub tcard {
     );
     $log->error( "Can't post:", $mech->response->status_line )
       unless $mech->success;
+    my $json = decode_json( encode( $enc, $mech->content ) )
+      or $log->error( "malformed JSON string: $!:",
+        encode( $enc, $mech->content ) );
+    my $jsonhash = $json->{'1'};
+    $opt{'stime'} = $new{'stime'} = $jsonhash->{'stime'};
+    $opt{'etime'} = $new{'etime'} = $jsonhash->{'etime'};
     $log->debug( encode( $enc, $mech->content ) );
     logout;
 }
@@ -397,11 +399,9 @@ sub tcard_dl {
     login();
 
     $mech->follow_link( url => $tcardlnk );
-    $log->error(
-        "Can't follow_link:",
-        "$tcardlnk:",
-        $mech->response->status_line
-    ) unless $mech->success;
+    $log->error( "Can't follow_link:",
+        "$tcardlnk:", $mech->response->status_line )
+      unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
 
     $mech->submit_form(
@@ -436,7 +436,7 @@ sub tcard_edit {
         }
     }
     map {
-        $log->debug( encode( 'utf8', "$_(new) => " . ( $new->{$_} || '' ) ) )
+        $log->debug( encode( $enc, "$_(new) => " . ( $new->{$_} || '' ) ) )
       }
       keys $new
       if $opt{'vorbis'};
@@ -510,11 +510,9 @@ sub get_time {
     login();
 
     $mech->follow_link( url => $tcardlnk );
-    $log->error(
-        "Can't follow_link:",
-        "$tcardlnk:",
-        $mech->response->status_line
-    ) unless $mech->success;
+    $log->error( "Can't follow_link:",
+        "$tcardlnk:", $mech->response->status_line )
+      unless $mech->success;
     $log->debug( encode( $enc, $mech->content ) );
 
     $mech->submit_form(
@@ -579,7 +577,6 @@ sub tk_part {
 }
 
 sub tk_all {
-    my ( %old, %new );
 
     $new{'stime'} = $opt{'stime'} if ( defined $opt{'stime'} );
     $new{'etime'} = $opt{'etime'} if ( defined $opt{'etime'} );
@@ -598,12 +595,13 @@ sub tk_all {
     my $tab1 = $book->add( "Sheet 1", -label => decode_utf8("出社/退社") );
     my $tab2 = $book->add( "Sheet 2", -label => decode_utf8("編集") );
     my $tab3 = $book->add( "Sheet 4", -label => decode_utf8("設定") );
+
     #my $tab4 = $book->add( "Sheet 3", -label => decode_utf8("一覧") );
     #my $tab5 = $book->add( "Sheet 4", -label => decode_utf8("ログ") );
 
-    tab_setime($tab1, $opt{'date'}, \&tcard, \&tcard_dl);
-    tab_edit($tab2, $opt{'date'}, \%old, \%new, \&get_time, \&tcard_edit);
-    tab_conf($tab3, \&dump_config);
+    tab_setime( $tab1, $opt{'date'}, \$opt{'stime'}, \$opt{'etime'}, \&tcard, \&tcard_dl );
+    tab_edit( $tab2, $opt{'date'}, \%old, \%new, \&get_time, \&tcard_edit );
+    tab_conf( $tab3, \&dump_config );
 
     MainLoop();
 }
