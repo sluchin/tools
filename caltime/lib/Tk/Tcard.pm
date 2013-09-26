@@ -25,7 +25,7 @@
 
 =head1 NAME
 
-Caltime - 勤務時間を計算する
+Tk::Tcard - タイムカードウィンドウ
 
 =head1 SYNOPSIS
 
@@ -77,7 +77,7 @@ sub format {
 sub dir_dialog {
     my ( $tab, $ent ) = @_;
     my $dir =
-        $tab->chooseDirectory( -title => decode_utf8("ディレクトリ") );
+      $tab->chooseDirectory( -title => decode_utf8("ディレクトリ") );
     if ( defined $dir && $dir ne '' ) {
         $ent->delete( 0, 'end' );
         $ent->insert( 0, $dir );
@@ -92,12 +92,16 @@ sub dir_dialog {
 =cut
 
 sub tab_setime {
-    my ( $tab, $date, $cmd1, $cmd2 ) = @_;
+    my ( $tab, $date, $stime, $etime, $cmd1, $cmd2 ) = @_;
 
+    $tab->Label( -textvariable => ( \$stime || '' ) )
+      ->grid( -row => 1, -column => 2, -padx => 15, -pady => 15 );
     $tab->Button(
         -text    => decode_utf8("出社"),
         -command => [ $cmd1, "go" ]
     )->grid( -row => 1, -column => 3, -padx => 15, -pady => 15 );
+    $tab->Label( -textvariable => ( \$etime || '' ) )
+      ->grid( -row => 2, -column => 2, -padx => 15, -pady => 15 );
     $tab->Button(
         -text    => decode_utf8("退社"),
         -command => [ $cmd1, "leave" ]
@@ -182,7 +186,7 @@ sub tab_edit {
 =cut
 
 sub tab_conf {
-    my ($tab, $cmd) = @_;
+    my ( $tab, $cmd ) = @_;
 
     $tab->Label( -text => decode_utf8("ディレクトリ: ") )
       ->grid( -row => 1, -column => 1, -pady => 7 );
