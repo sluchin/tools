@@ -142,9 +142,10 @@ sub tab_edit {
         -formatcmd    => \&format
     );
     $entry->grid( -row => 1, -column => 2, -pady => 5 );
+
     $tab->Button(
         -text    => decode_utf8("読込"),
-        -command => [ $cmd1, $entry, $date, $old, $new ]
+        -command => [ $cmd1, $entry, $old, $new ]
     )->grid( -row => 1, -column => 3, -padx => 5, -pady => 5 );
 
     $tab->Label( -text => decode_utf8("出社: ") )

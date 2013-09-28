@@ -1,12 +1,26 @@
 #!/usr/bin/perl -w
-
-##
-# @file tcard.pl
+# COPYRIGHT:
 #
-# disknet's NEO タイムカードを操作する.
+# Copyright (c) 2013 Tetsuya Higashi
+# All rights reserved.
 #
-# @author Tetsuya Higashi
+# LICENSE:
 #
+# This work is made available to you under the terms of Version 2 of
+# the GNU General Public License. A copy of that license should have
+# been provided with this software, but in any event can be snarfed
+# from www.gnu.org.
+#
+# This work is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 or visit their web page on the internet at
+# http://www.gnu.org/licenses/old-licenses/gpl-2.0.html.
 
 use strict;
 use warnings;
@@ -20,7 +34,7 @@ use JSON qw/decode_json/;
 use YAML qw/LoadFile Dump/;
 use Log::Dispatch;
 
-our $VERSION = do { my @r = ( q$Revision: 0.03 $ =~ /\d+/g );
+our $VERSION = do { my @r = ( q$Revision: 0.04 $ =~ /\d+/g );
     sprintf "%d." . "%02d" x $#r, @r if (@r);
 };
 
@@ -105,7 +119,6 @@ print_version() if ( $opt{'version'} );
 eval 'use Tk; 1'            || ( $opt{'nogui'} = 1 );
 eval 'use Tk::NoteBook; 1'  || ( $opt{'nogui'} = 1 );
 eval 'use Tk::DateEntry; 1' || ( $opt{'nogui'} = 1 );
-eval 'use Tk::Table; 1'     || ( $opt{'nogui'} = 1 );
 
 use Tk::Tcard;
 
@@ -362,7 +375,7 @@ sub tcard {
     my $response = $mech->post(
         $tcard,
         [
-            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\"" 
+            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\""
               . $arg
               . "\"},\"1\":{\"cmd\":\"tcardcmdtick\"}}",
             $token => 1
@@ -373,9 +386,15 @@ sub tcard {
     my $json = decode_json( encode( $enc, $mech->content ) )
       or $log->error( "malformed JSON string: $!:",
         encode( $enc, $mech->content ) );
-    my $jsonhash = $json->{'1'};
-    $opt{'stime'} = $new{'stime'} = $jsonhash->{'stime'};
-    $opt{'etime'} = $new{'etime'} = $jsonhash->{'etime'};
+
+    if ( exists $json->{'1'} ) {
+        my $h = $json->{'1'};
+        $opt{'stime'} = $new{'stime'} = $h->{'stime'};
+        $opt{'etime'} = $new{'etime'} = $h->{'etime'};
+        $new{'sreason'} = $h->{'sreason'};
+        $new{'ereason'} = $h->{'ereason'};
+        $new{'note'}    = $h->{'Note'};
+    }
     $log->debug( encode( $enc, $mech->content ) );
     logout;
 }
@@ -435,9 +454,7 @@ sub tcard_edit {
             $new->{$key} = undef;
         }
     }
-    map {
-        $log->debug( encode( $enc, "$_(new) => " . ( $new->{$_} || '' ) ) )
-      }
+    map { $log->debug( encode( $enc, "$_(new) => " . ( $new->{$_} || '' ) ) ) }
       keys $new
       if $opt{'vorbis'};
 
@@ -492,12 +509,12 @@ sub tcard_edit {
 }
 
 sub get_time {
-    my ( $entry, $dt, $old, $new ) = @_;
+    my ( $entry, $old, $new ) = @_;
 
     $log->warning("no user")   or return unless ( $opt{'id'} );
     $log->warning("no passwd") or return unless ( $opt{'pw'} );
 
-    $dt = $entry->get if ( defined $entry );
+    my $dt = $entry->get if ( defined $entry );
     $log->warning( "date:", $dt || '' )
       or return
       if ( !defined $dt || length $dt ne 8 );
@@ -526,6 +543,9 @@ sub get_time {
     $log->debug( encode( $enc, decode( $dec, $mech->content ) ) );
 
     my @lines = split /\r\n/, decode( $dec, $mech->content );
+    shift @lines;
+    my @workstate;
+    my $bdate = '';
     for my $line (@lines) {
         $line = decode_utf8($line);
 
@@ -536,27 +556,52 @@ sub get_time {
             undef, $ereason, $areason, $note
         ) = split( /,/, $line );
 
-        if ( $date eq $dt ) {
-            $stime =~ s/://;
-            $etime =~ s/://;
-            $note  =~ s/^"//;
-            $note  =~ s/"$//;
-            $old->{'stime'}   = $stime;
-            $old->{'etime'}   = $etime;
-            $old->{'sreason'} = $sreason;
-            $old->{'ereason'} = $ereason;
-            $old->{'areason'} = $areason;
-            $old->{'note'}    = $note;
-            last;
+        if ( $bdate ne $date ) {
+            push( @workstate, [ $date, $stime, $etime ] );
+            if ( $date eq $dt ) {
+                ( $old->{'stime'} = $stime ) =~ s/://;
+                ( $old->{'etime'} = $etime ) =~ s/://;
+                $old->{'sreason'} = $sreason || '';
+                $old->{'ereason'} = $ereason || '';
+                $old->{'areason'} = $areason || '';
+                ( $old->{'note'}  = $note )  =~ s/^"(.*)"$/$1/;
+            }
+
         }
+        $bdate = $date;
     }
     logout();
 
+    # ハッシュコピー
     foreach my $key ( keys $old ) {
         $new->{$key} = $old->{$key};
     }
-    map { $log->debug( encode( 'utf8', "$_ => " . ( $new->{$_} || '' ) ) ) }
-      keys $new;
+
+    # テーブル表示
+    eval 'use Tk::Table; 1';
+    if ( !$@ ) {
+        my $top = MainWindow->new();
+        $top->title( decode_utf8("就業状態") );
+        $top->geometry("300x500");
+        $top->resizable( 0, 0 );
+        my $rows = $#workstate;
+        $log->debug("rows:", $rows);
+        my $table = $top->Table(
+            -rows       => $rows,
+            -columns    => 3,
+            -scrollbars => 'e',
+            -fixedrows  => 1,
+            -takefocus  => 1
+        )->pack(-expand => 1);
+
+        my $row = 0;
+        for my $work (@workstate) {
+            $table->put( $row, 0, $work->[0] );
+            $table->put( $row, 1, $work->[1] );
+            $table->put( $row, 2, $work->[2] );
+            $row++;
+        }
+    }
 }
 
 # ウィンドウ
@@ -595,11 +640,10 @@ sub tk_all {
     my $tab1 = $book->add( "Sheet 1", -label => decode_utf8("出社/退社") );
     my $tab2 = $book->add( "Sheet 2", -label => decode_utf8("編集") );
     my $tab3 = $book->add( "Sheet 4", -label => decode_utf8("設定") );
+    #my $tab4 = $book->add( "Sheet 4", -label => decode_utf8("ログ") );
 
-    #my $tab4 = $book->add( "Sheet 3", -label => decode_utf8("一覧") );
-    #my $tab5 = $book->add( "Sheet 4", -label => decode_utf8("ログ") );
-
-    tab_setime( $tab1, $opt{'date'}, \$opt{'stime'}, \$opt{'etime'}, \&tcard, \&tcard_dl );
+    tab_setime( $tab1, $opt{'date'}, \$opt{'stime'}, \$opt{'etime'}, \&tcard,
+        \&tcard_dl );
     tab_edit( $tab2, $opt{'date'}, \%old, \%new, \&get_time, \&tcard_edit );
     tab_conf( $tab3, \&dump_config );
 
