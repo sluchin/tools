@@ -37,8 +37,6 @@ package Tk::Tcard;
 use strict;
 use warnings;
 use Encode qw/decode_utf8/;
-use Tk;
-use Tk::DateEntry;
 
 use Exporter;
 use base qw(Exporter);
@@ -120,7 +118,7 @@ sub tab_setime {
         -text    => decode_utf8("ダウンロード"),
         -command => [ $cmd2, $entry, $date ]
     )->grid( -row => 3, -column => 3, -padx => 15, -pady => 15 );
-    $tab->Button( -text => decode_utf8("終了"), -command => \&exit )
+    $tab->Button( -text => decode_utf8("終了"), -command => sub { exit(); } )
       ->grid( -row => 4, -column => 4, -padx => 15, -pady => 15 );
 }
 
@@ -176,7 +174,7 @@ sub tab_edit {
         -command => [ $cmd2, $entry, $date, $old, $new ]
     )->grid( -row => 5, -column => 4, -pady => 10 );
 
-    $tab->Button( -text => decode_utf8("終了"), -command => \&exit )
+    $tab->Button( -text => decode_utf8("終了"), -command => sub { exit(); } )
       ->grid( -row => 6, -column => 5, -padx => 15, -pady => 15 );
 }
 
@@ -215,7 +213,7 @@ sub tab_conf {
         -command => [ $cmd, $entdir, $entid, $entpw ]
     )->grid( -row => 4, -column => 3, -pady => 10 );
 
-    $tab->Button( -text => decode_utf8("終了"), -command => \&exit )
+    $tab->Button( -text => decode_utf8("終了"), -command => sub { exit(); } )
       ->grid( -row => 5, -column => 5, -padx => 15, -pady => 15 );
 }
 
