@@ -129,6 +129,7 @@ my $mw;
 
 sub messagebox {
     my ( $level, $mes ) = @_;
+    return if ( $opt{'nogui'} );
     if ( Exists($mw) ) {
         $mw->messageBox(
             -type    => 'Ok',
