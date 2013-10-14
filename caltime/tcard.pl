@@ -390,8 +390,8 @@ sub tcard {
 
     if ( exists $json->{'1'} ) {
         my $h = $json->{'1'};
-        ( $opt{'stime'} = $new{'stime'} = $h->{'stime'} ) =~ s/://;
-        ( $opt{'etime'} = $new{'etime'} = $h->{'etime'} ) =~ s/://;
+        ( $new{'stime'} = $h->{'stime'} ) =~ s/://; $opt{'stime'} = $new{'stime'};
+        ( $new{'etime'} = $h->{'etime'} ) =~ s/://; $opt{'etime'} = $new{'etime'};
         $new{'sreason'} = $h->{'sreason'};
         $new{'ereason'} = $h->{'ereason'};
         $new{'note'}    = $h->{'Note'};
