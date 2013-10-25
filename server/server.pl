@@ -213,22 +213,23 @@ while (1) {
                     or $!{EAGAIN}
                     or $!{EINTR}
                     or $!{ENOBUFS};
-            $len += bytes::length($read_buffer);
         } else {
-            $len += read ($acc, $read_buffer, 16384) || 0;
-            last if (!$len);
+            #$len += read ($acc, $read_buffer, 16384) || 0;
+            $read_buffer .= <$acc> || '';
         }
+        $len = bytes::length($read_buffer) || 0;
+        last if (!$len);
 
-        printf "\n%s bytes read.\n", ( $len || 0 );
+        printf "\nheader: %s bytes read.\n", ( $len || 0 );
         print $read_buffer;
         print $out $read_buffer;
         $rlen += $len;
-        $read_buffer =~ m/\r\n\r\n/ and last;
+        ( $read_buffer =~ m/\r\n\r\n/ ) and last;
     }
-    next if (!$len);
+    #next if (!$len);
     print "\n";
     print "rlen=" . ( $rlen || 0 ) . "\n";
-    $read_buffer =~ m/\r\n\r\n/ or next;
+    ( $read_buffer =~ m/\r\n\r\n/ ) or next;
 
     # ヘッダ長を取得
     my @header = split m/\r\n\r\n/, $read_buffer;    # ヘッダ分割
@@ -270,13 +271,15 @@ while (1) {
                   or $!{EAGAIN}
                   or $!{EINTR}
                   or $!{ENOBUFS};
-            $len = bytes::length($read_buffer);
         }
         else {
-            $len = read($acc, $read_buffer, $left);
-            last if (!$len);
+            #$len = read($acc, $read_buffer, $left);
+            $read_buffer = <$acc> || '';
         }
-        printf "\n%s bytes read.\n", ( $len || 0 );
+        $len = bytes::length($read_buffer) || 0;
+        last if (!$len);
+
+        printf "\nbody: %s bytes read.\n", ( $len || 0 );
         last if ( !$len || $read_buffer eq "");
 
         print $read_buffer;
@@ -288,7 +291,6 @@ while (1) {
     print "\n";
     print $out "\n";
     print "body_rlen[" . ( $body_rlen || 0 ) . "]\n" if $opt{'debug'};
-
     datetime("Done.", $out);
 
     # 送信メッセージの組立て
@@ -305,13 +307,13 @@ while (1) {
     # 送信
     if ($opt{'ssl'}) {
         Net::SSLeay::write( $ssl, $msg ) or die "write: $!";
+        die_if_ssl_error("ssl write");
     }
     else {
         print $acc $msg;
     }
     printf "\n%s bytes write.\n", ( bytes::length($msg) );
     print $msg . "\n";
-    die_if_ssl_error("ssl write");
 
     if ($opt{'ssl'}) {
         Net::SSLeay::free($ssl);
