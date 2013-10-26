@@ -76,7 +76,7 @@ my %opt = (
 
 # バージョン情報表示
 sub print_version() {
-    print "$progname version "
+    print "$progname version " 
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
@@ -376,7 +376,7 @@ sub tcard {
     my $response = $mech->post(
         $tcard,
         [
-            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\""
+            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\"" 
               . $arg
               . "\"},\"1\":{\"cmd\":\"tcardcmdtick\"}}",
             $token => 1
@@ -390,8 +390,10 @@ sub tcard {
 
     if ( exists $json->{'1'} ) {
         my $h = $json->{'1'};
-        ( $new{'stime'} = $h->{'stime'} ) =~ s/://; $opt{'stime'} = $new{'stime'};
-        ( $new{'etime'} = $h->{'etime'} ) =~ s/://; $opt{'etime'} = $new{'etime'};
+        ( $new{'stime'} = $h->{'stime'} ) =~ s/://;
+        $opt{'stime'} = $new{'stime'};
+        ( $new{'etime'} = $h->{'etime'} ) =~ s/://;
+        $opt{'etime'}   = $new{'etime'};
         $new{'sreason'} = $h->{'sreason'};
         $new{'ereason'} = $h->{'ereason'};
         $new{'note'}    = $h->{'Note'};
@@ -550,22 +552,21 @@ sub get_time {
     for my $line (@lines) {
         $line = decode_utf8($line);
 
-        my ( $date, $stime, $etime, $sreason, $ereason, $areason, $note );
-        (
-            $date, undef,    $stime,   undef, undef,  $sreason,
+        my (
+            $date, $week,    $stime,   undef, undef,  $sreason,
             undef, undef,    undef,    undef, $etime, undef,
             undef, $ereason, $areason, $note
         ) = split( /,/, $line );
 
         if ( $bdate ne $date ) {
-            push( @workstate, [ $date, $stime, $etime ] );
+            push( @workstate, [ $date, $week, $stime, $etime ] );
             if ( $date eq $dt ) {
                 ( $old->{'stime'} = $stime ) =~ s/://;
                 ( $old->{'etime'} = $etime ) =~ s/://;
                 $old->{'sreason'} = $sreason || '';
                 $old->{'ereason'} = $ereason || '';
                 $old->{'areason'} = $areason || '';
-                ( $old->{'note'}  = $note )  =~ s/^"(.*)"$/$1/;
+                ( $old->{'note'} = $note ) =~ s/^"(.*)"$/$1/;
             }
 
         }
@@ -586,20 +587,21 @@ sub get_time {
         $top->geometry("300x500");
         $top->resizable( 0, 0 );
         my $rows = $#workstate;
-        $log->debug("rows:", $rows);
+        $log->debug( "rows:", $rows );
         my $table = $top->Table(
             -rows       => $rows,
-            -columns    => 3,
+            -columns    => 4,
             -scrollbars => 'e',
             -fixedrows  => 1,
             -takefocus  => 1
-        )->pack(-expand => 1);
+        )->pack( -expand => 1 );
 
         my $row = 0;
         for my $work (@workstate) {
             $table->put( $row, 0, $work->[0] );
             $table->put( $row, 1, $work->[1] );
             $table->put( $row, 2, $work->[2] );
+            $table->put( $row, 3, $work->[3] );
             $row++;
         }
     }
@@ -641,6 +643,7 @@ sub tk_all {
     my $tab1 = $book->add( "Sheet 1", -label => decode_utf8("出社/退社") );
     my $tab2 = $book->add( "Sheet 2", -label => decode_utf8("編集") );
     my $tab3 = $book->add( "Sheet 4", -label => decode_utf8("設定") );
+
     #my $tab4 = $book->add( "Sheet 4", -label => decode_utf8("ログ") );
 
     tab_setime( $tab1, $opt{'date'}, \$opt{'stime'}, \$opt{'etime'}, \&tcard,

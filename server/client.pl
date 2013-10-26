@@ -5,7 +5,6 @@ use warnings;
 use File::Basename;
 use Getopt::Long;
 use Socket;
-use Net::SSLeay qw(die_now die_if_ssl_error);
 use bytes();
 use Sys::Hostname;
 
@@ -36,7 +35,7 @@ my %opt = (
 # バージョン情報表示
 #
 sub print_version() {
-    print "$progname version "
+    print "$progname version " 
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
@@ -66,7 +65,9 @@ GetOptions(
     'ssl'       => \$opt{'ssl'},
     'help|h|?'  => \$opt{'help'},
     'version|V' => \$opt{'version'}
-) or usage() and exit( $stathash{'EX_NG'} );
+  )
+  or usage()
+  and exit( $stathash{'EX_NG'} );
 
 usage() and exit( $stathash{'EX_OK'} ) if ( $opt{'help'} );
 print_version() if ( $opt{'version'} );
@@ -76,8 +77,8 @@ my ( $header, $body );
 # ヘッダ
 $header =
 "POST /Hems/Storage/Mete HTTP/1.1\r\nConnection: close\r\nPragma: no-cache\r\nHost: "
-    . (hostname() || "")
-    . "\r\nSequenceNo: 0\r\nHID: 11821000007\r\nContent-type: text/html; charset=utf-8\r\n";
+  . ( hostname() || "" )
+  . "\r\nSequenceNo: 0\r\nHID: 11821000007\r\nContent-type: text/html; charset=utf-8\r\n";
 
 # ボディ
 $body =
@@ -89,7 +90,13 @@ my $msg = $header;
 $msg .= "Content-Length: " . $content_length . "\r\n\r\n";
 $msg .= $body;
 
-if ($opt{'ssl'}) {
+unless ( eval 'use Net::SSLeay qw(die_now die_if_ssl_error); 1' || $opt{'ssl'} )
+{
+    print "Cannot use Net::SSLeay\nTry `cpan Net::SSLeay'\n";
+    exit( $stathash{'EX_NG'} );
+}
+
+if ( $opt{'ssl'} ) {
     Net::SSLeay::load_error_strings();
     Net::SSLeay::SSLeay_add_ssl_algorithms();
     Net::SSLeay::randomize();
@@ -107,15 +114,16 @@ select($socket);
 $| = 1;
 select(STDOUT);
 
-my ($ssl, $ctx);
-if ($opt{'ssl'}) {
+my ( $ssl, $ctx );
+if ( $opt{'ssl'} ) {
     my $ctx = Net::SSLeay::CTX_new() or die_now("Failed to create SSL_CTX $!");
     Net::SSLeay::CTX_set_options( $ctx, &Net::SSLeay::OP_ALL )
-            and die_if_ssl_error("ssl ctx set options");
+      and die_if_ssl_error("ssl ctx set options");
     $ssl = Net::SSLeay::new($ctx) or die_now("Failed to create SSL $!");
     Net::SSLeay::set_fd( $ssl, fileno($socket) );
     my $res = Net::SSLeay::connect($ssl) and die_if_ssl_error("ssl connect");
     print "Cipher `" . Net::SSLeay::get_cipher($ssl) . "'\n";
+
     # 送信
     $res = Net::SSLeay::write( $ssl, $msg );
     die_if_ssl_error("ssl write");
@@ -133,26 +141,25 @@ my $read_buffer;
 my $len;
 while (1) {
     $len = 0;
-    if ($opt{'ssl'}) {
-        $read_buffer = Net::SSLeay::read( $ssl, 16384 ) || "";
+    if ( $opt{'ssl'} ) {
+        $read_buffer = Net::SSLeay::read( $ssl, 16384 ) || '';
         die_if_ssl_error("ssl read");
-        die "read: $!\n"
-          unless defined $read_buffer
-              or $!{EAGAIN}
-              or $!{EINTR}
-              or $!{ENOBUFS};
-        $len = bytes::length($read_buffer);
     }
     else {
-        $len = read($socket, $read_buffer, 16384);
-        last if ($len == 0);
+        read( $socket, $read_buffer, 16384 );
     }
-    printf "\n%s bytes read.\n", $len;
-    last if ( !$len || $read_buffer eq "");
+    die "read: $!\n"
+      unless defined $read_buffer
+          or $!{EAGAIN}
+          or $!{EINTR}
+          or $!{ENOBUFS};
+    $len = bytes::length($read_buffer) || 0;
+    printf "\n%d bytes read.\n", $len;
+    last if ( !$len );
     print $read_buffer;
 }
 
-if ($opt{'ssl'}) {
+if ( $opt{'ssl'} ) {
     Net::SSLeay::free($ssl);
     Net::SSLeay::CTX_free($ctx);
 }
