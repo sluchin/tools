@@ -32,9 +32,10 @@ use WWW::Mechanize qw/post/;
 use HTTP::Cookies;
 use JSON qw/decode_json/;
 use YAML qw/LoadFile Dump/;
+use Crypt::Blowfish qw/encrypt decrypt/;
 use Log::Dispatch;
 
-our $VERSION = do { my @r = ( q$Revision: 0.04 $ =~ /\d+/g );
+our $VERSION = do { my @r = ( q$Revision: 0.05 $ =~ /\d+/g );
     sprintf "%d." . "%02d" x $#r, @r if (@r);
 };
 
@@ -76,7 +77,7 @@ my %opt = (
 
 # バージョン情報表示
 sub print_version() {
-    print "$progname version " 
+    print "$progname version "
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
@@ -115,39 +116,19 @@ GetOptions(
 usage() and exit( $stathash{'EX_OK'} ) if ( $opt{'help'} );
 print_version() if ( $opt{'version'} );
 
-# Tk ない場合, コマンドラインのみ
-eval 'use Tk; 1'            || ( $opt{'nogui'} = 1 );
-eval 'use Tk::NoteBook; 1'  || ( $opt{'nogui'} = 1 );
-eval 'use Tk::DateEntry; 1' || ( $opt{'nogui'} = 1 );
-
-use Tk::Tcard;
-
-print $opt{'nogui'} . "\n";
-
-# メッセージ
-my $mw;
-
-sub messagebox {
-    my ( $level, $mes ) = @_;
-    return if ( $opt{'nogui'} );
-    if ( Exists($mw) ) {
-        $mw->messageBox(
-            -type    => 'Ok',
-            -icon    => 'error',
-            -title   => decode_utf8("エラー"),
-            -message => $mes || ''
-        ) if ( lc $level eq 'error' );
-        $mw->messageBox(
-            -type    => 'Ok',
-            -icon    => 'warning',
-            -title   => decode_utf8("警告"),
-            -message => $mes || ''
-        ) if ( lc $level eq 'warning' );
+if ( !$opt{'nogui'} ) {
+    eval { use Tk::Tcard; };
+    if ($@) {
+        print "no Tk";
+        exit( $stathash{'EX_NG'} );
     }
 }
 
+# Tkオブジェクト
+my $win;
+
 # ログ出力
-sub filecb {
+sub cbfile {
     my %args = @_;
     my ( $pkg, $file, $line );
     my $caller = 0;
@@ -157,13 +138,14 @@ sub filecb {
     }
     chomp( $args{'message'} );
     my @time = localtime;
-    messagebox( $args{'level'}, $args{'message'} );
+    $win->messagebox( $args{'level'}, $args{'message'} ) if ( defined $win );
+
     sprintf "%04d-%02d-%02d %02d:%02d:%02d [%s] %s at %s line %d.\n",
       $time[5] + 1900, $time[4] + 1, @time[ 3, 2, 1, 0 ],
       $args{'level'}, $args{'message'}, $file, $line;
 }
 
-sub screencb {
+sub cbscreen {
     my %args = @_;
     chomp( $args{'message'} );
     sprintf $args{'message'} . "\n";
@@ -176,12 +158,12 @@ my $log = Log::Dispatch->new(
             'min_level' => 'debug',
             'filename'  => $logfile,
             'mode'      => 'append',
-            'callbacks' => \&filecb
+            'callbacks' => \&cbfile
         ],
         [
             'Screen',
             'min_level' => $opt{'vorbis'} ? 'debug' : 'info',
-            'callbacks' => \&screencb
+            'callbacks' => \&cbscreen
         ],
     ],
 );
@@ -191,9 +173,28 @@ $log->debug("@INC");
 # 設定ファイル読み込み(オプション引数の方が優先度高い)
 my ( $config, $configfile );
 
-sub load_config {
+my $key_pw = "Ms4u0TUahPTPM";
 
-    #　設定ファイル
+# パスワード複合化
+sub decrypt_pw {
+    my $ciphertext = shift;
+    my $key        = pack( "H16", $key_pw );
+    my $cipher     = Crypt::Blowfish->new($key);
+    my $plaintext  = $cipher->decrypt( pack( "H16", $ciphertext ) );
+    return $plaintext;
+}
+
+# パスワード暗号化
+sub encrypt_pw {
+    my $plaintext  = shift;
+    my $key        = pack( "H16", $key_pw );
+    my $cipher     = Crypt::Blowfish->new($key);
+    my $ciphertext = $cipher->encrypt($plaintext);
+    return unpack( "H16", $ciphertext );
+}
+
+#　設定ファイル
+sub load_config {
     my $confdir = $ENV{'HOME'} || undef;
     $confdir = $progdir
       if ( !defined $confdir || !-f catfile( $confdir, $confname ) );
@@ -203,7 +204,7 @@ sub load_config {
 }
 
 # 設定ファイル書き込み
-sub dump_config {
+sub save_config {
     my ( $dir, $id, $pw ) = @_;
 
     $log->debug( $dir->get || '', $id->get || '', $pw->get || '' );
@@ -214,11 +215,11 @@ sub dump_config {
     my $hash = {
         'dir'    => $opt{'dir'},
         'user'   => $opt{'id'},
-        'passwd' => $opt{'pw'},
+        'passwd' => encrypt_pw( $opt{'pw'} ),
     };
     open my $cf, ">", $configfile
       or $log->error( "open[$configfile]:", $! );
-    print $cf Dump $hash;
+    print $cf Dump($hash);
     close $cf;
 }
 
@@ -234,8 +235,8 @@ $opt{'id'} = $config->{'user'} unless ( $opt{'id'} );
 $log->info( "id:", $opt{'id'} || '' );
 
 # パスワード
-$opt{'pw'} = $config->{'passwd'} unless ( $opt{'pw'} );
-$log->info( "pw:", $opt{'pw'} || '' );
+$opt{'pw'} = decrypt_pw( $config->{'passwd'} ) unless ( $opt{'pw'} );
+$log->info( "pw:", encrypt_pw( $opt{'pw'} ) || '' );
 
 # エンコード
 my ( $enc, $dec );
@@ -376,7 +377,7 @@ sub tcard {
     my $response = $mech->post(
         $tcard,
         [
-            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\"" 
+            multicmd => "{\"0\":{\"cmd\":\"tcardcmdstamp\",\"mode\":\""
               . $arg
               . "\"},\"1\":{\"cmd\":\"tcardcmdtick\"}}",
             $token => 1
@@ -513,6 +514,7 @@ sub tcard_edit {
 
 sub get_time {
     my ( $entry, $old, $new ) = @_;
+    my @workstate;
 
     $log->warning("no user")   or return unless ( $opt{'id'} );
     $log->warning("no passwd") or return unless ( $opt{'pw'} );
@@ -547,7 +549,7 @@ sub get_time {
 
     my @lines = split /\r\n/, decode( $dec, $mech->content );
     shift @lines;
-    my @workstate;
+
     my $bdate = '';
     for my $line (@lines) {
         $line = decode_utf8($line);
@@ -579,100 +581,38 @@ sub get_time {
         $new->{$key} = $old->{$key};
     }
 
-    # テーブル表示
-    eval 'use Tk::Table; 1';
-    if ( !$@ ) {
-        my $top = MainWindow->new();
-        $top->title( decode_utf8("就業状態") );
-        $top->geometry("300x500");
-        $top->resizable( 0, 0 );
-        my $rows = $#workstate;
-        $log->debug( "rows:", $rows );
-        my $table = $top->Table(
-            -rows       => $rows,
-            -columns    => 4,
-            -scrollbars => 'e',
-            -fixedrows  => 1,
-            -takefocus  => 1
-        )->pack( -expand => 1 );
-
-        my $row = 0;
-        for my $work (@workstate) {
-            $table->put( $row, 0, $work->[0] );
-            $table->put( $row, 1, $work->[1] );
-            $table->put( $row, 2, $work->[2] );
-            $table->put( $row, 3, $work->[3] );
-            $row++;
-        }
-    }
+    $win->work_state(@workstate) if ( defined $win );
 }
 
-# ウィンドウ
-sub tk_part {
-    my ( $text, $func ) = @_;
-
-    my $mw = MainWindow->new();
-    $mw->title( decode_utf8("タイムカード") );
-    $mw->geometry("200x100");
-    $mw->resizable( 0, 0 );
-    $mw->Label( -textvariable => \$text )->pack();
-    $mw->Button( -text => 'Cancel', -command => \&exit )
-      ->pack( -side => 'right', -expand => 1 );
-    $mw->Button( -text => 'OK', -command => $func )
-      ->pack( -side => 'left', -expand => 1 );
-
-    MainLoop();
-}
-
-sub tk_all {
-
-    $new{'stime'} = $opt{'stime'} if ( defined $opt{'stime'} );
-    $new{'etime'} = $opt{'etime'} if ( defined $opt{'etime'} );
-
-    $mw = MainWindow->new();
-    $mw->title( decode_utf8("タイムカード") . "  [v$VERSION]" );
-    $mw->geometry("500x300");
-    $mw->resizable( 0, 0 );
-    if ( -f $iconfile ) {
-        my $image = $mw->Pixmap( -file => $iconfile );
-        $mw->Icon( -image => $image );
-    }
-
-    my $book = $mw->NoteBook()->pack( -fill => 'both', -expand => 1 );
-
-    my $tab1 = $book->add( "Sheet 1", -label => decode_utf8("出社/退社") );
-    my $tab2 = $book->add( "Sheet 2", -label => decode_utf8("編集") );
-    my $tab3 = $book->add( "Sheet 4", -label => decode_utf8("設定") );
-
-    #my $tab4 = $book->add( "Sheet 4", -label => decode_utf8("ログ") );
-
-    tab_setime( $tab1, $opt{'date'}, \$opt{'stime'}, \$opt{'etime'}, \&tcard,
-        \&tcard_dl );
-    tab_edit( $tab2, $opt{'date'}, \%old, \%new, \&get_time, \&tcard_edit );
-    tab_conf( $tab3, \&dump_config );
-
-    MainLoop();
+sub window {
+    $win = Tk::Tcard->new(
+        'id'       => $opt{'id'},
+        'pw'       => $opt{'pw'},
+        'dir'      => $opt{'dir'},
+        'date'     => $opt{'date'},
+        'stime'    => $opt{'stime'},
+        'etime'    => $opt{'etime'},
+        'old'      => \%old,
+        'new'      => \%new,
+        'tcardcmd' => \&tcard,
+        'gettmcmd' => \&get_time,
+        'editcmd'  => \&tcard_edit,
+        'dlcmd'    => \&tcard_dl,
+        'savecmd'  => \&save_config,
+    );
+    $win->create_window(
+        'iconfile' => $iconfile,
+        'version'  => $VERSION,
+    );
 }
 
 if ( $opt{'start'} ) {
-    tk_part( decode_utf8("出社"), [ \&tcard, "go" ] )
-      and exit( $stathash{'EX_OK'} )
-      unless ( $opt{'nogui'} );
     tcard("go");
 }
 elsif ( $opt{'stop'} ) {
-    tk_part( decode_utf8("退社"), [ \&tcard, "leave" ] )
-      and exit( $stathash{'EX_OK'} )
-      unless ( $opt{'nogui'} );
     tcard("leave");
 }
 elsif ( $opt{'download'} ) {
-    tk_part(
-        decode_utf8("ダウンロード"),
-        [ \&tcard_dl, undef, $opt{'date'} ]
-      )
-      and exit( $stathash{'EX_OK'} )
-      unless ( $opt{'nogui'} );
     tcard_dl( undef, $opt{'date'} );
 }
 elsif ( $opt{'edit'} ) {
@@ -694,7 +634,7 @@ else {
         exit( $stathash{'EX_NG'} );
     }
     else {
-        tk_all();
+        window();
     }
 }
 

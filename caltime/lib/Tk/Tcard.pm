@@ -29,7 +29,6 @@ Tk::Tcard - タイムカードウィンドウ
 
 =head1 SYNOPSIS
 
-
 =cut
 
 package Tk::Tcard;
@@ -37,78 +36,196 @@ package Tk::Tcard;
 use strict;
 use warnings;
 use Encode qw/decode_utf8/;
+use Tk;
+use Tk::NoteBook;
+use Tk::DateEntry;
 
 use Exporter;
-use base qw(Exporter);
-our @EXPORT = qw(tab_setime tab_edit tab_conf);
+use base qw/Exporter/;
+our @EXPORT = qw/tab_setime tab_edit tab_conf work_state/;
+
+# ステータス
+my %stathash = (
+    'EX_OK' => 0,    # 正常終了
+    'EX_NG' => 1,    # 異常終了
+);
+
+sub new {
+    my $proto = shift;
+    my $class = ref($proto) || $proto;
+    my $self  = {};
+    bless( $self, $class );
+    $self->init(@_);
+    return $self;
+}
+
+sub init {
+    my $self = shift;
+    my %args = (
+        date     => undef,
+        stime    => 0,
+        etime    => 0,
+        old      => undef,
+        new      => undef,
+        tcardcmd => undef,
+        gettmcmd => undef,
+        editcmd  => undef,
+        dlcmd    => undef,
+        savecmd  => undef,
+        @_
+    );
+
+    $self->{'id'}       = $args{'id'};
+    $self->{'pw'}       = $args{'pw'};
+    $self->{'dir'}      = $args{'dir'};
+    $self->{'date'}     = $args{'date'};
+    $self->{'stime'}    = $args{'stime'};
+    $self->{'etime'}    = $args{'etime'};
+    $self->{'old'}      = $args{'old'};
+    $self->{'new'}      = $args{'new'};
+    $self->{'tcardcmd'} = $args{'tcardcmd'};
+    $self->{'gettmcmd'} = $args{'gettmcmd'};
+    $self->{'editcmd'}  = $args{'editcmd'};
+    $self->{'dlcmd'}    = $args{'dlcmd'};
+    $self->{'savecmd'}  = $args{'savecmd'};
+
+    my $src = $self->{'new'};
+    $src->{'stime'} = $self->{'stime'} if ( defined $self->{'stime'} );
+    $src->{'etime'} = $self->{'etime'} if ( defined $self->{'etime'} );
+}
 
 =head1 METHODS
 
-=head2 parse
+=head2 window
 
-日付解析
+ウィンドウ生成
 
 =cut
 
-sub parse {
-    my ( $day, $mon, $yr ) = split '-', $_[0];
-    return ( $yr, $mon, $day );
+sub create_window {
+    my $self = shift;
+    my %args = (
+        iconfile => '',
+        version  => '',
+        @_
+    );
+    my $mw;
+    $mw = MainWindow->new();
+    $mw->protocol('WM_DELETE_WINDOW', \&Exit);
+    $mw->title(
+        decode_utf8("タイムカード") . "  [v" . $args{'version'} . "]" );
+    $mw->geometry("500x300");
+    $mw->resizable( 0, 0 );
+    if ( -f $args{'iconfile'} ) {
+        my $image = $mw->Pixmap( -file => $args{'iconfile'} );
+        $mw->Icon( -image => $image );
+    }
+    $self->{'mw'} = $mw;
+
+    my $book = $mw->NoteBook()->pack( -fill => 'both', -expand => 1 );
+
+    my $tab1 = $book->add( "Sheet 1", -label => decode_utf8("出社/退社") );
+    my $tab2 = $book->add( "Sheet 2", -label => decode_utf8("編集") );
+    my $tab3 = $book->add( "Sheet 3", -label => decode_utf8("設定") );
+
+    #my $tab4 = $book->add( "Sheet 4", -label => decode_utf8("ログ") );
+
+    tab_setime( $self, $tab1 );
+    tab_edit( $self, $tab2 );
+    tab_conf( $self, $tab3 );
+    MainLoop();
 }
 
-=head2 format
+=head2 window
 
-日付フォーマット
-
-=cut
-
-sub format {
-    my ( $yr, $mon, $day ) = @_;
-    return sprintf( "%04d%02d%02d", $yr, $mon, $day );
-}
-
-=head2 dir_dialog
-
-ディレクトリ選択
+メッセージボックス生成
 
 =cut
 
-sub dir_dialog {
-    my ( $tab, $ent ) = @_;
-    my $dir =
-      $tab->chooseDirectory( -title => decode_utf8("ディレクトリ") );
-    if ( defined $dir && $dir ne '' ) {
-        $ent->delete( 0, 'end' );
-        $ent->insert( 0, $dir );
-        $ent->xview('end');
+sub messagebox {
+    my ( $self, $level, $mes ) = @_;
+    if ( Exists( $self->{'mw'} ) ) {
+        my $mw = $self->{'mw'};
+        $mw->messageBox(
+            -type    => 'Ok',
+            -icon    => 'error',
+            -title   => decode_utf8("エラー"),
+            -message => $mes || ''
+        ) if ( lc $level eq 'error' );
+        $mw->messageBox(
+            -type    => 'Ok',
+            -icon    => 'warning',
+            -title   => decode_utf8("警告"),
+            -message => $mes || ''
+        ) if ( lc $level eq 'warning' );
     }
 }
 
-=head2 tab_setime
+=head2 work_state
 
-出社/退社タブ
+就業状態
 
 =cut
 
-sub tab_setime {
-    my ( $tab, $date, $stime, $etime, $cmd1, $cmd2 ) = @_;
+sub work_state {
+    my $self      = shift;
+    my @workstate = @_;
 
-    $tab->Label( -textvariable => ( \$stime || '' ) )
+    eval { use Tk::Table; };
+    if ( !$@ ) {
+        my $top = MainWindow->new();
+        $top->title( decode_utf8("就業状態") );
+        $top->geometry("300x500");
+        $top->resizable( 0, 0 );
+        my $rows  = $#workstate;
+        my $table = $top->Table(
+            -rows       => $rows,
+            -columns    => 4,
+            -scrollbars => 'e',
+            -fixedrows  => 1,
+            -takefocus  => 1
+        )->pack( -expand => 1 );
+
+        my $row = 0;
+        for my $work (@workstate) {
+            $table->put( $row, 0, $work->[0] );
+            $table->put( $row, 1, $work->[1] );
+            $table->put( $row, 2, $work->[2] );
+            $table->put( $row, 3, $work->[3] );
+            $row++;
+        }
+    }
+}
+
+# 出社/退社タブ
+sub tab_setime {
+    my $self = shift;
+    my $tab  = shift;
+
+    my $tcardcmd = $self->{'tcardcmd'};
+    my $dlcmd    = $self->{'dlcmd'};
+    $tab->Label( -textvariable => ( \$self->{'stime'} || '' ) )
       ->grid( -row => 1, -column => 2, -padx => 15, -pady => 15 );
     $tab->Button(
         -text    => decode_utf8("出社"),
-        -command => [ $cmd1, "go" ]
+        -command => sub { $self->{'cmd1'}->("go") },
     )->grid( -row => 1, -column => 3, -padx => 15, -pady => 15 );
-    $tab->Label( -textvariable => ( \$etime || '' ) )
+
+    $tab->Label( -textvariable => ( \$self->{'etime'} || '' ) )
       ->grid( -row => 2, -column => 2, -padx => 15, -pady => 15 );
+    my $entry;
     $tab->Button(
         -text    => decode_utf8("退社"),
-        -command => [ $cmd1, "leave" ]
+        -command => sub {
+            $tcardcmd->("leave");
+            $dlcmd->( $self->{'entry'}, $self->{'date'} );
+        },
     )->grid( -row => 2, -column => 3, -padx => 15, -pady => 15 );
 
     $tab->Label( -text => decode_utf8("日付: ") )
       ->grid( -row => 3, -column => 1 );
-    my $entry = $tab->DateEntry(
-        -textvariable => $date,
+    $entry = $tab->DateEntry(
+        -textvariable => $self->{'date'},
         -width        => 10,
         -parsecmd     => \&parse,
         -formatcmd    => \&format
@@ -116,25 +233,26 @@ sub tab_setime {
     $entry->grid( -row => 3, -column => 2, -padx => 15, -pady => 15 );
     $tab->Button(
         -text    => decode_utf8("ダウンロード"),
-        -command => [ $cmd2, $entry, $date ]
+        -command => [ $dlcmd, $self->{'entry'}, $self->{'date'} ]
     )->grid( -row => 3, -column => 3, -padx => 15, -pady => 15 );
-    $tab->Button( -text => decode_utf8("終了"), -command => sub { exit(); } )
+    $tab->Button( -text => decode_utf8("終了"), -command => sub { Exit(); } )
       ->grid( -row => 4, -column => 4, -padx => 15, -pady => 15 );
 }
 
-=head2 tab_edit
-
-編集タブ
-
-=cut
-
+# 編集タブ
 sub tab_edit {
-    my ( $tab, $date, $old, $new, $cmd1, $cmd2 ) = @_;
+    my $self = shift;
+    my $tab  = shift;
+
+    my $gettmcmd = $self->{'gettmcmd'};
+    my $editcmd  = $self->{'editcmd'};
+    my $old      = $self->{'old'};
+    my $new      = $self->{'new'};
 
     $tab->Label( -text => decode_utf8("日付: ") )
       ->grid( -row => 1, -column => 1, -pady => 5 );
     my $entry = $tab->DateEntry(
-        -textvariable => $date,
+        -textvariable => $self->{'date'},
         -width        => 10,
         -parsecmd     => \&parse,
         -formatcmd    => \&format
@@ -143,7 +261,7 @@ sub tab_edit {
 
     $tab->Button(
         -text    => decode_utf8("読込"),
-        -command => [ $cmd1, $entry, $old, $new ]
+        -command => [ $gettmcmd, $entry, $old, $new ]
     )->grid( -row => 1, -column => 3, -padx => 5, -pady => 5 );
 
     $tab->Label( -text => decode_utf8("出社: ") )
@@ -171,26 +289,24 @@ sub tab_edit {
 
     $tab->Button(
         -text    => decode_utf8("編集"),
-        -command => [ $cmd2, $entry, $date, $old, $new ]
+        -command => [ $editcmd, $entry, $self->{'date'}, $old, $new ]
     )->grid( -row => 5, -column => 4, -pady => 10 );
 
-    $tab->Button( -text => decode_utf8("終了"), -command => sub { exit(); } )
+    $tab->Button( -text => decode_utf8("終了"), -command => sub { Exit(); } )
       ->grid( -row => 6, -column => 5, -padx => 15, -pady => 15 );
 }
 
-=head2 tab_conf
-
-設定タブ
-
-=cut
-
+# 設定タブ
 sub tab_conf {
-    my ( $tab, $cmd ) = @_;
+    my $self = shift;
+    my $tab  = shift;
+
+    my $savecmd = $self->{'savecmd'};
 
     $tab->Label( -text => decode_utf8("ディレクトリ: ") )
       ->grid( -row => 1, -column => 1, -pady => 7 );
     my $entdir =
-      $tab->Entry( -width => 30 )
+      $tab->Entry( -textvariable => \$self->{'dir'}, -width => 30 )
       ->grid( -row => 1, -column => 2, -columnspan => 2, -pady => 7 );
     $tab->Button(
         -text    => decode_utf8("選択"),
@@ -200,21 +316,51 @@ sub tab_conf {
     $tab->Label( -text => decode_utf8("ユーザ名: ") )
       ->grid( -row => 2, -column => 1, -pady => 7 );
     my $entid =
-      $tab->Entry( -width => 20 )->grid( -row => 2, -column => 2, -pady => 7 );
+      $tab->Entry( -textvariable => \$self->{'id'}, -width => 20 )
+      ->grid( -row => 2, -column => 2, -pady => 7 );
 
     $tab->Label( -text => decode_utf8("パスワード: ") )
       ->grid( -row => 3, -column => 1, -pady => 7 );
     my $entpw =
-      $tab->Entry( -width => 20, -show => '*' )
+      $tab->Entry( -textvariable => \$self->{'pw'}, -width => 20, -show => '*' )
       ->grid( -row => 3, -column => 2, -pady => 7 );
 
     $tab->Button(
         -text    => decode_utf8("保存"),
-        -command => [ $cmd, $entdir, $entid, $entpw ]
+        -command => [ $savecmd, $entdir, $entid, $entpw ]
     )->grid( -row => 4, -column => 3, -pady => 10 );
 
-    $tab->Button( -text => decode_utf8("終了"), -command => sub { exit(); } )
+    $tab->Button( -text => decode_utf8("終了"), -command => sub { Exit(); } )
       ->grid( -row => 5, -column => 5, -padx => 15, -pady => 15 );
+}
+
+# 日付パース
+sub parse {
+    my ( $day, $mon, $yr ) = split '-', $_[0];
+    return ( $yr, $mon, $day );
+}
+
+# 日付フォーマット
+sub format {
+    my ( $self, $yr, $mon, $day ) = @_;
+    return sprintf( "%04d%02d%02d", $yr, $mon, $day );
+}
+
+# ディレクトリ選択
+sub dir_dialog {
+    my ( $tab, $ent ) = @_;
+    my $dir =
+      $tab->chooseDirectory( -title => decode_utf8("ディレクトリ") );
+    if ( defined $dir && $dir ne '' ) {
+        $ent->delete( 0, 'end' );
+        $ent->insert( 0, $dir );
+        $ent->xview('end');
+    }
+}
+
+# 後処理
+sub Exit {
+    exit( $stathash{'EX_OK'} );
 }
 
 1;
