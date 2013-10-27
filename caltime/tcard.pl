@@ -76,7 +76,7 @@ my %opt = (
 );
 
 # バージョン情報表示
-sub print_version() {
+sub print_version {
     print "$progname version "
       . $VERSION . "\n"
       . "  running on Perl version "
@@ -86,7 +86,7 @@ sub print_version() {
 }
 
 # ヘルプ表示
-sub usage() {
+sub usage {
     require Pod::Usage;
     import Pod::Usage;
     pod2usage();

@@ -1,4 +1,26 @@
 #!/usr/bin/perl -w
+# COPYRIGHT:
+#
+# Copyright (c) 2013 Tetsuya Higashi
+# All rights reserved.
+#
+# LICENSE:
+#
+# This work is made available to you under the terms of Version 2 of
+# the GNU General Public License. A copy of that license should have
+# been provided with this software, but in any event can be snarfed
+# from www.gnu.org.
+#
+# This work is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 or visit their web page on the internet at
+# http://www.gnu.org/licenses/old-licenses/gpl-2.0.html.
 
 use strict;
 use warnings;
@@ -13,6 +35,12 @@ our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
 };
 
 my $progname = basename($0);
+my $progdir;
+
+BEGIN {
+    $progdir = dirname( readlink($0) || $0 );
+    push( @INC, $progdir . '/lib' );
+}
 
 # ステータス
 my %stathash = (
@@ -31,10 +59,8 @@ my %opt = (
     'version' => 0
 );
 
-##
 # バージョン情報表示
-#
-sub print_version() {
+sub print_version {
     print "$progname version "
       . $VERSION . "\n"
       . "  running on Perl version "
@@ -43,18 +69,11 @@ sub print_version() {
     exit( $stathash{'EX_OK'} );
 }
 
-##
 # ヘルプ表示
-#
-sub usage() {
-    print << "EOF"
-Usage: $progname [options]
-   -i,  --dest       Set the ipaddress server default $opt{dest}.
-   -p,  --port       This parameter sets port number default $opt{port}.
-        --ssl        Send for ssl.
-   -h,  --help       Display this help and exit.
-   -V,  --version    Output version information and exit.
-EOF
+sub usage {
+    require Pod::Usage;
+    import Pod::Usage;
+    pod2usage();
 }
 
 # オプション引数
@@ -169,3 +188,18 @@ close $socket and print "close $socket\n";
 exit( $stathash{'EX_OK'} );
 
 __END__
+
+=head1 NAME
+
+client.pl - http client program.
+
+=head1 SYNOPSIS
+
+client.pl [options]
+
+ Options:
+   -i,  --dest       Set the ip address.
+   -p,  --port       This parameter sets port number.
+        --ssl        Send for ssl.
+   -h,  --help       Display this help and exit.
+   -V,  --version    Output version information and exit.
