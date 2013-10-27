@@ -62,16 +62,16 @@ sub new {
 sub init {
     my $self = shift;
     my %args = (
-        date     => undef,
-        stime    => 0,
-        etime    => 0,
-        old      => undef,
-        new      => undef,
-        tcardcmd => undef,
-        gettmcmd => undef,
-        editcmd  => undef,
-        dlcmd    => undef,
-        savecmd  => undef,
+        'date'     => undef,
+        'stime'    => 0,
+        'etime'    => 0,
+        'old'      => undef,
+        'new'      => undef,
+        'tcardcmd' => undef,
+        'gettmcmd' => undef,
+        'editcmd'  => undef,
+        'dlcmd'    => undef,
+        'savecmd'  => undef,
         @_
     );
 
@@ -130,9 +130,9 @@ sub create_window {
 
     #my $tab4 = $book->add( "Sheet 4", -label => decode_utf8("ログ") );
 
-    tab_setime( $self, $tab1 );
-    tab_edit( $self, $tab2 );
-    tab_conf( $self, $tab3 );
+    _tab_setime( $self, $tab1 );
+    _tab_edit( $self, $tab2 );
+    _tab_conf( $self, $tab3 );
     MainLoop();
 }
 
@@ -198,7 +198,7 @@ sub work_state {
 }
 
 # 出社/退社タブ
-sub tab_setime {
+sub _tab_setime {
     my $self = shift;
     my $tab  = shift;
 
@@ -227,8 +227,8 @@ sub tab_setime {
     $entry = $tab->DateEntry(
         -textvariable => $self->{'date'},
         -width        => 10,
-        -parsecmd     => \&parse,
-        -formatcmd    => \&format
+        -parsecmd     => \&_parse,
+        -formatcmd    => \&_format
     );
     $entry->grid( -row => 3, -column => 2, -padx => 15, -pady => 15 );
     $tab->Button(
@@ -240,7 +240,7 @@ sub tab_setime {
 }
 
 # 編集タブ
-sub tab_edit {
+sub _tab_edit {
     my $self = shift;
     my $tab  = shift;
 
@@ -254,8 +254,8 @@ sub tab_edit {
     my $entry = $tab->DateEntry(
         -textvariable => $self->{'date'},
         -width        => 10,
-        -parsecmd     => \&parse,
-        -formatcmd    => \&format
+        -parsecmd     => \&_parse,
+        -formatcmd    => \&_format
     );
     $entry->grid( -row => 1, -column => 2, -pady => 5 );
 
@@ -297,7 +297,7 @@ sub tab_edit {
 }
 
 # 設定タブ
-sub tab_conf {
+sub _tab_conf {
     my $self = shift;
     my $tab  = shift;
 
@@ -310,7 +310,7 @@ sub tab_conf {
       ->grid( -row => 1, -column => 2, -columnspan => 2, -pady => 7 );
     $tab->Button(
         -text    => decode_utf8("選択"),
-        -command => [ \&dir_dialog, $tab, $entdir ]
+        -command => [ \&_dir_dialog, $tab, $entdir ]
     )->grid( -row => 1, -column => 4, -pady => 10 );
 
     $tab->Label( -text => decode_utf8("ユーザ名: ") )
@@ -335,19 +335,19 @@ sub tab_conf {
 }
 
 # 日付パース
-sub parse {
+sub _parse {
     my ( $day, $mon, $yr ) = split '-', $_[0];
     return ( $yr, $mon, $day );
 }
 
 # 日付フォーマット
-sub format {
+sub _format {
     my ( $self, $yr, $mon, $day ) = @_;
     return sprintf( "%04d%02d%02d", $yr, $mon, $day );
 }
 
 # ディレクトリ選択
-sub dir_dialog {
+sub _dir_dialog {
     my ( $tab, $ent ) = @_;
     my $dir =
       $tab->chooseDirectory( -title => decode_utf8("ディレクトリ") );
