@@ -1,12 +1,27 @@
 #!/usr/bin/perl -w
+# COPYRIGHT:
 #
-# モジュールのインストール
-# cpan Net::SSLeay
+# Copyright (c) 2013 Tetsuya Higashi
+# All rights reserved.
 #
-# SSL証明書の作成
-# openssl genrsa 2048 > server.key
-# openssl req -new -key server.key > server.csr
-# openssl x509 -days 3650 -req -signkey server.key < server.csr > server.crt
+# LICENSE:
+#
+# This work is made available to you under the terms of Version 2 of
+# the GNU General Public License. A copy of that license should have
+# been provided with this software, but in any event can be snarfed
+# from www.gnu.org.
+#
+# This work is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 or visit their web page on the internet at
+# http://www.gnu.org/licenses/old-licenses/gpl-2.0.html.
+
 use strict;
 use warnings;
 use File::Basename;
@@ -42,7 +57,7 @@ my %opt = (
 # バージョン情報表示
 #
 sub print_version() {
-    print "$progname version " 
+    print "$progname version "
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
@@ -109,13 +124,14 @@ $body = $opt{'body'};
 $body = "version=V2.01A"
   if ( $opt{'ver'} );
 
-unless ( eval 'use Net::SSLeay qw(die_now die_if_ssl_error); 1' || $opt{'ssl'} )
-{
-    print "Cannot use Net::SSLeay\nTry `cpan Net::SSLeay'\n";
-    exit( $stathash{'EX_NG'} );
-}
-
 if ( $opt{'ssl'} ) {
+    eval {
+        use Net::SSLeay qw(die_now die_if_ssl_error);
+    };
+    if (!$@) {
+        print "Cannot use Net::SSLeay\nTry `cpan Net::SSLeay'\n";
+        exit( $stathash{'EX_NG'} );
+    }
     Net::SSLeay::load_error_strings();
     Net::SSLeay::SSLeay_add_ssl_algorithms();
     Net::SSLeay::randomize();
@@ -148,14 +164,16 @@ bind( $socket, $our_params ) or die "bind:   $!";
 listen( $socket, SOMAXCONN ) or die "listen: $!";
 
 if ( $opt{'ssl'} ) {
+    die ("no server.key") unless (-f "server.key");
+    die ("no server.crt") unless (-f "server.crt");
     $ctx = Net::SSLeay::CTX_new() or die_now("CTX_new ($ctx): $!");
     Net::SSLeay::CTX_set_options( $ctx, &Net::SSLeay::OP_ALL )
       and die_if_ssl_error("ssl ctx set options");
 
-    Net::SSLeay::CTX_use_RSAPrivateKey_file( $ctx, 'server.key',
+    Net::SSLeay::CTX_use_RSAPrivateKey_file( $ctx, "server.key",
         &Net::SSLeay::FILETYPE_PEM );
     die_if_ssl_error("private key");
-    Net::SSLeay::CTX_use_certificate_file( $ctx, 'server.crt',
+    Net::SSLeay::CTX_use_certificate_file( $ctx, "server.crt",
         &Net::SSLeay::FILETYPE_PEM );
     die_if_ssl_error("certificate");
 }
@@ -200,16 +218,17 @@ while (1) {
         $read_buffer = undef;
         if ( $opt{'ssl'} ) {
             my $buf = Net::SSLeay::read( $ssl, 16384 ) || '';
-            $len = bytes::length($buf);
+            $len = bytes::length($buf) || 0;
             $read_buffer .= $buf;
             die_if_ssl_error("ssl read");
         }
         else {
-            $len = read( $acc, my $buf, 16384 );
+            read( $acc, my $buf, 16384 );
+            $len = bytes::length($buf) || 0;
             $read_buffer .= $buf;
         }
         die "read: $!\n"
-          unless defined $read_buffer
+          unless $len
               or $!{EAGAIN}
               or $!{EINTR}
               or $!{ENOBUFS};
@@ -315,3 +334,10 @@ exit( $stathash{'EX_OK'} );
 
 __END__
 
+# モジュールのインストール
+# cpan Net::SSLeay
+#
+# SSL証明書の作成
+# openssl genrsa 2048 > server.key
+# openssl req -new -key server.key > server.csr
+# openssl x509 -days 3650 -req -signkey server.key < server.csr > server.crt
