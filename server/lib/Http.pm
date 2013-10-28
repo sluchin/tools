@@ -225,7 +225,7 @@ sub _read {
     my $self = shift;
     my $soc  = shift;
 
-    print "soc: $soc\n";
+    print "soc: $soc\n" if ($self->{'vorbis'});
     my $buf = '';
     if ( $self->{'ssl'} ) {
         $buf = Net::SSLeay::read( $soc, 16384 );
@@ -252,7 +252,7 @@ sub _write {
     my $soc  = shift;
     my $msg  = shift;
 
-    print "msg: " . $msg . "\n";
+    print "soc: $soc\n" if ($self->{'vorbis'});
     if ( $self->{'ssl'} ) {
         Net::SSLeay::write( $soc, $msg ) or die "write: $!";
         die_if_ssl_error("ssl write");
