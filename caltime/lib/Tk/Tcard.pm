@@ -36,6 +36,7 @@ package Tk::Tcard;
 use strict;
 use warnings;
 use Encode qw/decode_utf8/;
+use File::Basename qw/dirname/;
 use Tk;
 use Tk::NoteBook;
 use Tk::DateEntry;
@@ -111,11 +112,12 @@ sub create_window {
     );
     my $mw;
     $mw = MainWindow->new();
-    $mw->protocol('WM_DELETE_WINDOW', \&Exit);
+    $mw->protocol( 'WM_DELETE_WINDOW', \&Exit );
     $mw->title(
         decode_utf8("タイムカード") . "  [v" . $args{'version'} . "]" );
     $mw->geometry("500x300");
     $mw->resizable( 0, 0 );
+
     if ( -f $args{'iconfile'} ) {
         my $image = $mw->Pixmap( -file => $args{'iconfile'} );
         $mw->Icon( -image => $image );
@@ -208,7 +210,7 @@ sub _tab_setime {
       ->grid( -row => 1, -column => 2, -padx => 15, -pady => 15 );
     $tab->Button(
         -text    => decode_utf8("出社"),
-        -command => sub { $self->{'cmd1'}->("go") },
+        -command => sub { $tcardcmd->("go") },
     )->grid( -row => 1, -column => 3, -padx => 15, -pady => 15 );
 
     $tab->Label( -textvariable => ( \$self->{'etime'} || '' ) )
@@ -264,36 +266,47 @@ sub _tab_edit {
         -command => [ $gettmcmd, $entry, $old, $new ]
     )->grid( -row => 1, -column => 3, -padx => 5, -pady => 5 );
 
-    $tab->Label( -text => decode_utf8("出社: ") )
+    $tab->Label( -text => decode_utf8("欠勤: ") )
       ->grid( -row => 2, -column => 1, -pady => 7 );
-    $tab->Entry( -textvariable => \$new->{'stime'}, -width => 12 )
+    my $opt =
+      $tab->Optionmenu( -textvariable => \$new->{'areason'}, -width => 10 )
       ->grid( -row => 2, -column => 2, -pady => 7 );
+    $opt->addOptions(
+        decode_utf8("未選択"), decode_utf8("欠勤"),
+        decode_utf8("慶弔"),    decode_utf8("有休"),
+        decode_utf8("代休"),    decode_utf8("その他"),
+    );
+
+    $tab->Label( -text => decode_utf8("出社: ") )
+      ->grid( -row => 3, -column => 1, -pady => 7 );
+    $tab->Entry( -textvariable => \$new->{'stime'}, -width => 12 )
+      ->grid( -row => 3, -column => 2, -pady => 7 );
     $tab->Label( -text => decode_utf8("遅刻事由: ") )
-      ->grid( -row => 2, -column => 3, -padx => 5, -pady => 7 );
+      ->grid( -row => 3, -column => 3, -padx => 5, -pady => 7 );
     $tab->Entry( -textvariable => \$new->{'sreason'}, -width => 20 )
-      ->grid( -row => 2, -column => 4, -padx => 5, -pady => 7 );
+      ->grid( -row => 3, -column => 4, -padx => 5, -pady => 7 );
 
     $tab->Label( -text => decode_utf8("退社: ") )
-      ->grid( -row => 3, -column => 1, -pady => 7 );
+      ->grid( -row => 4, -column => 1, -pady => 7 );
     $tab->Entry( -textvariable => \$new->{'etime'}, -width => 12 )
-      ->grid( -row => 3, -column => 2, -pady => 7 );
+      ->grid( -row => 4, -column => 2, -pady => 7 );
     $tab->Label( -text => decode_utf8("早退事由: ") )
-      ->grid( -row => 3, -column => 3, -padx => 5, -pady => 7 );
+      ->grid( -row => 4, -column => 3, -padx => 5, -pady => 7 );
     $tab->Entry( -textvariable => \$new->{'ereason'}, -width => 20 )
-      ->grid( -row => 3, -column => 4, -pady => 7 );
+      ->grid( -row => 4, -column => 4, -pady => 7 );
 
     $tab->Label( -text => decode_utf8("備考: ") )
-      ->grid( -row => 4, -column => 1, -padx => 5, -pady => 10 );
+      ->grid( -row => 5, -column => 1, -padx => 5, -pady => 10 );
     $tab->Entry( -textvariable => \$new->{'note'}, -width => 45 )
-      ->grid( -row => 4, -column => 2, -columnspan => 3, -pady => 7 );
+      ->grid( -row => 5, -column => 2, -columnspan => 3, -pady => 7 );
 
     $tab->Button(
         -text    => decode_utf8("編集"),
         -command => [ $editcmd, $entry, $self->{'date'}, $old, $new ]
-    )->grid( -row => 5, -column => 4, -pady => 10 );
+    )->grid( -row => 6, -column => 4, -pady => 10 );
 
     $tab->Button( -text => decode_utf8("終了"), -command => sub { Exit(); } )
-      ->grid( -row => 6, -column => 5, -padx => 15, -pady => 15 );
+      ->grid( -row => 7, -column => 5, -padx => 15, -pady => 15 );
 }
 
 # 設定タブ
@@ -321,9 +334,11 @@ sub _tab_conf {
 
     $tab->Label( -text => decode_utf8("パスワード: ") )
       ->grid( -row => 3, -column => 1, -pady => 7 );
-    my $entpw =
-      $tab->Entry( -textvariable => \$self->{'pw'}, -width => 20, -show => '*' )
-      ->grid( -row => 3, -column => 2, -pady => 7 );
+    my $entpw = $tab->Entry(
+        -textvariable => \$self->{'pw'},
+        -width        => 20,
+        -show         => '*'
+    )->grid( -row => 3, -column => 2, -pady => 7 );
 
     $tab->Button(
         -text    => decode_utf8("保存"),
@@ -342,7 +357,7 @@ sub _parse {
 
 # 日付フォーマット
 sub _format {
-    my ( $self, $yr, $mon, $day ) = @_;
+    my ( $yr, $mon, $day ) = @_;
     return sprintf( "%04d%02d%02d", $yr, $mon, $day );
 }
 
