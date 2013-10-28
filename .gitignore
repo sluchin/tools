@@ -1,5 +1,9 @@
 *~
-/caltime/tcard.conf
-/caltime/*.csv
-/caltime/cookie.txt
-/caltime/tcard.log
+\#*#
+*.bak
+*.BAK
+*.csv
+*.log
+cookie.txt
+caltime/tcard.conf
+caltime/tcard.log
