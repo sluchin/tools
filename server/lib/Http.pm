@@ -176,7 +176,7 @@ sub write_msg {
 
     # 送信メッセージ
     my $msg =
-         $header . "SequenceNo: " . ( $args{'sequence_no'} || '' )
+         $header . "\r\nSequenceNo: " . ( $args{'sequence_no'} || '0' )
        . "\r\n" . "Content-Length: " . ( ( bytes::length($body) ) || '' )
        . "\r\nDate: " . ( datetime() || '' )
        . "\r\n" . "Server: test-server\r\n\r\n"
@@ -243,7 +243,7 @@ sub _write {
     else {
         print { $self->{'soc'} } $msg;
     }
-    CORE::shutdown $self->{'soc'}, 1;
+    #CORE::shutdown $self->{'soc'}, 1;
     $len = bytes::length( $msg || '' ) || 0;
     die "write error: $!\n"
       if $!{EAGAIN}

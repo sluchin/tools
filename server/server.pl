@@ -109,7 +109,7 @@ my $send_header =
     "HTTP/1.1 "
   . $opt{'status'} . " "
   . ( $http_status{ $opt{'status'} } || "" )
-  . "\r\nConnection: close\r\n";
+  . "\r\nConnection: close";
 
 # ボディ
 my $send_body = $opt{'body'};

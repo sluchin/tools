@@ -101,7 +101,7 @@ print_version() if ( $opt{'version'} );
 my $send_header =
 "POST /Hems/Storage/Mete HTTP/1.1\r\nConnection: close\r\nPragma: no-cache\r\nHost: "
   . ( hostname() || "" )
-  . "\r\nSequenceNo: 0\r\nHID: 11821000007\r\nContent-type: text/html; charset=utf-8\r\n";
+  . "\r\nSequenceNo: 0\r\nHID: 11821000007\r\nContent-type: text/html; charset=utf-8";
 
 # ボディ
 my $send_body =
@@ -156,6 +156,7 @@ my %res = $http->write_msg(
     'sequence_no' => 0,
     'msg'         => $msg
 );
+CORE::shutdown $socket, 1;
 print $res{'buffer'} . "\n";
 
 # ヘッダ受信
