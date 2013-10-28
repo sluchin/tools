@@ -264,7 +264,7 @@ sub read_files {
 sub read_file {
     my $file = shift;
     my ( $in, $out, $output );
-    my ( $date, $week, $begin, $end, $inf, $comment );
+    my ( $date, $week, $begin, $end, $inf, $comment, $remarks );
     my ( $common, $over, $late, $offset );
     my ( $group, $name, $person, $sum, $debug );
     my @diff;
@@ -303,7 +303,8 @@ sub read_file {
 
         (
             $date, $week, $begin, $inf,  undef, $comment,
-            undef, undef, undef,  undef, $end
+            undef, undef, undef,  undef, $end, undef, undef,
+            undef, undef, $remarks
         ) = split( /,/, $line );
 
         next unless ( ( defined $date ) || ( $date eq "" ) );
@@ -313,9 +314,13 @@ sub read_file {
         $output .= $sep;
         $debug .= $date . $sep if ( $opt{'verbose'} );
 
+        # 備考欄に no の文字列がある場合, 無効にする
+        if ( defined $remarks ) {
+            $begin = $end = undef if ( $remarks =~ m/^\"no\"/ );
+        }
         # 始業時刻のコメントの先頭に時刻フォーマットの文字列がある場合
-        if ( defined $comment ) {   # 時刻からオフセット値を求める
-            if ( $comment =~ /^\d{2}:\d{2}/ ) {
+        if ( defined $comment ) {
+            if ( $comment =~ m/^\"\d{2}:\d{2}\"/ ) {  # 時刻からオフセット値を求める
                 $comment = substr( $comment, 0, 5 );
                 $comment = conv_min($comment);
                 print "$comment\n" if ( $opt{'verbose'} );
