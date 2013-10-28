@@ -114,8 +114,10 @@ my $send_header =
 # ボディ
 my $send_body = $opt{'body'};
 
-# バージョン取得
-$send_body = "version=V2.01A" if ( $opt{'ver'} );
+open my $out, ">>", "$opt{'file'}"
+  or die "open[$opt{'file'}]: $!";
+
+my $acc = undef;
 
 if ( $opt{'ssl'} ) {
     eval { use Net::SSLeay qw(die_now die_if_ssl_error); };
@@ -134,18 +136,6 @@ my $our_params = pack( $sockaddr_template, &PF_INET, $opt{'port'}, $ourip );
 my $ctx;
 my $ssl;
 my $addr;
-
-sub datetime {
-    my $string = shift || '';
-    my ( $sec, $min, $hour, $mday, $mon, $year ) = localtime(time);
-    my $datetime = sprintf(
-        "%04d-%02d-%02d %02d:%02d:%02d",
-        $year + 1900,
-        $mon + 1, $mday, $hour, $min, $sec
-    );
-    $datetime = "[" . $datetime . "] " . $string if ($string);
-    return $datetime;
-}
 
 socket( my $socket, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
   or die("socket: $!\n");
@@ -168,10 +158,6 @@ if ( $opt{'ssl'} ) {
         &Net::SSLeay::FILETYPE_PEM );
     die_if_ssl_error("certificate");
 }
-
-open my $out, ">>", "$opt{'file'}"
-  or die "open[$opt{'file'}]: $!";
-my $acc = undef;
 
 # シグナル
 $SIG{'INT'} = sub {
@@ -197,41 +183,29 @@ while (1) {
         print "Cipher `" . Net::SSLeay::get_cipher($ssl) . "'\n";
     }
 
-    print $out datetime("Started.") . "\n";
-
     # ヘッダ受信
     my ( $left, $read_buffer );
 
     my $http = Http->new( 'soc' => $acc, 'ssl' => $ssl, 'fd' => $out );
+    print $out $http->datetime("Started.") . "\n";
     my %header = $http->read_header();
     next unless (%header);
     print $header{'buffer'} || '' . "\n";
 
-    my ( $len, $rlen ) = 0;
-
     # ボディ受信
     my %body = $http->read_body( 'left' => $header{'left'} );
     print $body{'buffer'} || '' . "\n";
-
-    print $out "\n" . datetime("Done.") . "\n";
-
-    # 送信メッセージ
-    my $msg =
-         $send_header . "SequenceNo: " . $header{'sequence_no'}
-      || '' . "\r\n" . "Content-Length: " . ( bytes::length($send_body) )
-      || '' . "\r\nDate: " . datetime()
-      || '' . "\r\n" . "Server: test-server\r\n\r\n" . $send_body;
+    print $out "\n" . $http->datetime("Done.") . "\n";
 
     # 送信
-    if ( $opt{'ssl'} ) {
-        Net::SSLeay::write( $ssl, $msg ) or die "write: $!";
-        die_if_ssl_error("ssl write");
-    }
-    else {
-        print $acc $msg;
-    }
-    printf "\n%d bytes write.\n", ( bytes::length($msg) ) || 0;
-    print $msg . "\n";
+    my $msg .= $send_header . "\r\n\r\n" . $send_body;
+    my %res = $http->write_msg(
+        'soc'         => $acc,
+        'ssl'         => $ssl,
+        'sequence_no' => $header{'sequence_no'},
+        'msg'         => $msg
+    );
+    print $res{'buffer'} . "\n";
 
     Net::SSLeay::free($ssl) if ( $opt{'ssl'} );
     close $acc and print "close $acc\n";

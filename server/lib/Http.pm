@@ -38,10 +38,6 @@ use warnings;
 use Socket;
 use bytes();
 
-use Exporter;
-use base qw/Exporter/;
-our @EXPORT = qw//;
-
 # ステータス
 my %stathash = (
     'EX_OK' => 0,    # 正常終了
@@ -131,7 +127,7 @@ sub read_header {
     );
 }
 
-=head2 window
+=head2 read_body
 
 ボディ受信
 
@@ -161,25 +157,101 @@ sub read_body {
     );
 }
 
+=head2 write_msg
+
+送信
+
+=cut
+
+sub write_msg {
+    my $self = shift;
+    my %args = (
+        'soc'         => undef,
+        'ssl'         => undef,
+        'sequence_no' => '',
+        'msg'         => '',
+        @_
+    );
+    my ( $header, $body ) = split m/\r\n\r\n/, $args{'msg'};
+
+    # 送信メッセージ
+    my $msg =
+         $header . "SequenceNo: " . ( $args{'sequence_no'} || '' )
+       . "\r\n" . "Content-Length: " . ( ( bytes::length($body) ) || '' )
+       . "\r\nDate: " . ( datetime() || '' )
+       . "\r\n" . "Server: test-server\r\n\r\n"
+       . $body;
+
+    # 送信
+    my $len = _write($self, $msg);
+    printf "\n%d bytes write.\n", $len || 0;
+
+    return (
+        'len'    => $len,
+        'buffer' => $msg
+    );
+}
+
+=head2 datetime
+
+日時
+
+=cut
+
+sub datetime {
+    my $string = shift || '';
+    my ( $sec, $min, $hour, $mday, $mon, $year ) = localtime(time);
+    my $datetime = sprintf(
+        "%04d-%02d-%02d %02d:%02d:%02d",
+        $year + 1900,
+        $mon + 1, $mday, $hour, $min, $sec
+    );
+    $datetime = "[" . $datetime . "] " . $string if ($string);
+    return $datetime;
+}
+
+# 受信
 sub _read {
     my $self = shift;
     my ( $len, $buf );
-    if ( defined $self->{'ssl'} ) {
+    if ( $self->{'ssl'} ) {
         $buf = Net::SSLeay::read( $self->{'ssl'}, 16384 );
-        $len = bytes::length( $buf || '' ) || 0;
         die_if_ssl_error("ssl read");
     }
     else {
         read( $self->{'soc'}, $buf, 16384 );
-        $len = bytes::length( $buf || '' ) || 0;
     }
-    die "read: $!\n"
+    $len = bytes::length( $buf || '' ) || 0;
+    die "read error: $!\n"
       unless $len
-          or $!{EAGAIN}
-          or $!{EINTR}
-          or $!{ENOBUFS};
+      or $!{EAGAIN}
+      or $!{EINTR}
+      or $!{ENOBUFS};
     return ( $len, $buf );
 }
+
+# 送信
+sub _write {
+    my $self = shift;
+    my $msg = shift;
+    my $len;
+
+    if ( $self->{'ssl'} ) {
+        Net::SSLeay::write( $self->{'ssl'}, $msg ) or die "write: $!";
+        die_if_ssl_error("ssl write");
+    }
+    else {
+        print { $self->{'soc'} } $msg;
+    }
+    CORE::shutdown $self->{'soc'}, 1;
+    $len = bytes::length( $msg || '' ) || 0;
+    die "write error: $!\n"
+      if $!{EAGAIN}
+      or $!{EINTR}
+      or $!{ENOBUFS};
+    return $len;
+}
+
 1;
 
 __END__
