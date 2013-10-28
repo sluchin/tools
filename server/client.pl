@@ -57,7 +57,7 @@ my %opt = (
     'ssl'     => 0,
     'file'    => "client.log",
     'repeat'  => 1,
-    'verbose' => 0,
+    'vorbis'  => 0,
     'help'    => 0,
     'version' => 0
 );
@@ -146,13 +146,12 @@ if ( $opt{'ssl'} ) {
     print "Cipher `" . Net::SSLeay::get_cipher($ssl) . "'\n";
 }
 
-my $http = Http->new( 'soc' => $socket, 'ssl' => $ssl, 'fd' => $out );
+my $http = Http->new( 'ssl' => $opt{'ssl'}, 'fd' => $out, 'vorbis' => $opt{'vorbis'});
 
 # 送信
 my $msg .= $send_header . "\r\n\r\n" . $send_body;
 my %res = $http->write_msg(
-    'soc'         => $socket,
-    'ssl'         => $ssl,
+    'soc'         => ( $opt{'ssl'} ? $ssl : $socket ),
     'sequence_no' => 0,
     'msg'         => $msg
 );
@@ -160,16 +159,17 @@ CORE::shutdown $socket, 1;
 print $res{'buffer'} . "\n";
 
 # ヘッダ受信
-my ( $left, $read_buffer );
-
 print $out $http->datetime("Started.") . "\n";
-my %header = $http->read_header();
+my %header = $http->read_header('soc' => ( $opt{'ssl'} ? $ssl : $socket ) );
 
 print $header{'left'} || '' . "\n";
 print $header{'buffer'} || '' . "\n";
 
 # ボディ受信
-my %body = $http->read_body( 'left' => $header{'left'} );
+my %body = $http->read_body(
+    'soc'  => ( $opt{'ssl'} ? $ssl : $socket ),
+    'left' => $header{'left'}
+);
 print $body{'buffer'} || '' . "\n";
 print $out "\n" . $http->datetime("Done.") . "\n";
 
