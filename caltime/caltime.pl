@@ -73,6 +73,8 @@ my %opt = (
     'offset'  => 0,
     'group'   => 0,
     'weekly'  => 0,
+    'begin'   => undef,
+    'end'     => undef,
     'verbose' => 0,
     'help'    => 0,
     'version' => 0,
@@ -86,6 +88,8 @@ GetOptions(
     'offset|o=i' => \$opt{'offset'},
     'group|g'    => \$opt{'group'},
     'weekly|w'   => \$opt{'weekly'},
+    'begin|b=s'  => \$opt{'begin'},
+    'end|e=s'    => \$opt{'end'},
     'verbose|v'  => \$opt{'verbose'},
     'help|h|?'   => \$opt{'help'},
     'version|V'  => \$opt{'version'},
@@ -308,6 +312,11 @@ sub read_file {
         ) = split( /,/, $line );
 
         next unless ( ( defined $date ) || ( $date eq "" ) );
+        my $cmp = $date;
+        $cmp =~ s/\///g;        # スラッシュ削除
+        next if ( defined $opt{'begin'} && ( $cmp lt $opt{'begin'} ) );
+        next if ( defined $opt{'end'} && ( $opt{'end'} lt $cmp ) );
+
         $output .= $date;
         $output .= $sep;
         $output .= $week if ( ( !defined $week ) || ( $week ne "" ) );
@@ -318,6 +327,7 @@ sub read_file {
         if ( defined $remarks ) {
             $begin = $end = undef if ( $remarks =~ m/^\"no\"/ );
         }
+
         # 始業時刻のコメントの先頭に時刻フォーマットの文字列がある場合
         if ( defined $comment ) {
             if ( $comment =~ m/^\"\d{2}:\d{2}\"/ ) {  # 時刻からオフセット値を求める
@@ -373,27 +383,32 @@ sub read_file {
     };
     push( @filelst, $file );
     my ( $month, undef, undef ) = fileparse( $file, ('.csv') );
-    $month = decode( $dec, $month );
-    @{ $grouphash{$file} } = (
-        $month,       $group,         $name,
-        $common_sum,  $over_sum,      $late_sum,
-        $holiday_sum, $holi_late_sum, $worktime
-    );
+    if ( defined $opt{'begin'} && ( substr($opt{'begin'}, 0, 6 ) le $month ) ) {
+        if ( defined $opt{'end'} && ( $month le substr($opt{'end'}, 0, 6) ) ) {
 
-    print $debug . "\n" if ( $opt{'verbose'} );
-    printf "%s\n", encode( $enc, $output ) if ( $opt{'verbose'} );
-    print_result( $name, $month );
+            $month = decode( $dec, $month );
+            @{ $grouphash{$file} } = (
+                $month,       $group,         $name,
+                $common_sum,  $over_sum,      $late_sum,
+                $holiday_sum, $holi_late_sum, $worktime
+            );
 
-    # ファイルに出力
-    $person .= $month;
-    $person .= "_" . $group unless ( $group eq "" );
-    $person .= "_" . $name unless ( $name eq "" );
-    $person .= ".csv";
-    $person = encode( $enc, $person );
-    open $out, ">", "$person"
-      or die "open[$person]: $!";
-    print $out encode( $enc, $output );
-    close $out;
+            print $debug . "\n" if ( $opt{'verbose'} );
+            printf "%s\n", encode( $enc, $output ) if ( $opt{'verbose'} );
+            print_result( $name, $month );
+
+            # ファイルに出力
+            $person .= $month;
+            $person .= "_" . $group unless ( $group eq "" );
+            $person .= "_" . $name unless ( $name eq "" );
+            $person .= ".csv";
+            $person = encode( $enc, $person );
+            open $out, ">", "$person"
+                or die "open[$person]: $!";
+            print $out encode( $enc, $output );
+            close $out;
+        }
+    }
     init();
 }
 
@@ -445,6 +460,8 @@ caltime.pl [options] [-d directory|file]
    -o, --offset           Offset start time(-1=8:00).
    -g, --group            Calcuration for group.
    -w, --weekly           Calcuration weekly.
+   -b, --begin            Begin date.
+   -e, --end              End date.
    -v, --verbose          Display extra information.
    -h, --help             Display this help and exit.
    -V, --version          Output version information and exit.
