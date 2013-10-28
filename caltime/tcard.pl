@@ -485,11 +485,12 @@ sub tcard_edit {
     my $response = $mech->post(
         $tcard,
         [
-            'cmd'               => 'tcardcmdentry',
-            'id'                => ( $id || '' ),
-            'prid'              => ( $prid || '' ),
-            'date'              => ( $dt || '' ),
-            'absencereason'     => '',
+            'cmd'           => 'tcardcmdentry',
+            'id'            => ( $id || '' ),
+            'prid'          => ( $prid || '' ),
+            'date'          => ( $dt || '' ),
+            'absencereason' => ( $new->{'areason'} || '' ) eq
+              decode_utf8("未選択") ? '' : $new->{'areason'},
             'absencereasonfree' => '',
             'updatestime'       => ( $new->{'stime'} || '' ),
             'sreason'           => ( $new->{'sreason'} || '' ),
@@ -565,9 +566,12 @@ sub get_time {
             if ( $date eq $dt ) {
                 ( $old->{'stime'} = $stime ) =~ s/://;
                 ( $old->{'etime'} = $etime ) =~ s/://;
-                $old->{'sreason'} = $sreason || '';
-                $old->{'ereason'} = $ereason || '';
-                $old->{'areason'} = $areason || '';
+                $old->{'sreason'} = ( $sreason || '' );
+                $old->{'ereason'} = ( $ereason || '' );
+                $old->{'areason'} =
+                  ( $areason || '' ) eq ''
+                  ? decode_utf8("未選択")
+                  : $areason;
                 ( $old->{'note'} = $note ) =~ s/^"(.*)"$/$1/;
             }
 
