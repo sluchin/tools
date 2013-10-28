@@ -55,7 +55,7 @@ my %opt = (
     'status'  => "200",
     'file'    => "server.log",
     'ssl'     => 0,
-    'body'    => "test",
+    'body'    => "{\"result\":\"OK\",\"cid\":\"test_cid\",\"start_code\":\"012345678\"}",
     'vorbis'  => 0,
     'help'    => 0,
     'version' => 0
@@ -81,11 +81,11 @@ sub usage {
 # オプション引数
 Getopt::Long::Configure(qw{no_getopt_compat no_auto_abbrev no_ignore_case});
 GetOptions(
+    'port|p=i'   => \$opt{'port'},
     'status|s=s' => \$opt{'status'},
     'file|f=s'   => \$opt{'file'},
     'ssl'        => \$opt{'ssl'},
     'body|b=s'   => \$opt{'body'},
-    'port|p=i'   => \$opt{'port'},
     'vorbis|v'   => \$opt{'vorbis'},
     'help|h|?'   => \$opt{'help'},
     'version|V'  => \$opt{'version'}
@@ -184,24 +184,26 @@ while (1) {
     }
 
     # ヘッダ受信
-    my ( $left, $read_buffer );
-
-    my $http = Http->new( 'soc' => $acc, 'ssl' => $ssl, 'fd' => $out );
+    print "ssl: " . $opt{'ssl'} . "\n";
+    my $http = Http->new( 'ssl' => $opt{'ssl'}, 'fd' => $out, 'vorbis' => $opt{'vorbis'} );
     print $out $http->datetime("Started.") . "\n";
-    my %header = $http->read_header();
+    printf("acc: %s\n", ( $opt{'ssl'} ? $ssl : $acc ) );
+    my %header = $http->read_header('soc' => ( $opt{'ssl'} ? $ssl : $acc ) );
     next unless (%header);
-    print $header{'buffer'} || '' . "\n";
+    print $header{'buffer'} || '' . "\n" if ($header{'len'});
 
     # ボディ受信
-    my %body = $http->read_body( 'left' => $header{'left'} );
-    print $body{'buffer'} || '' . "\n";
+    my %body = $http->read_body(
+        'soc'  => ( $opt{'ssl'} ? $ssl : $acc ),
+        'left' => $header{'left'}
+    );
+    print $body{'buffer'} || '' . "\n" if ($body{'len'});
     print $out "\n" . $http->datetime("Done.") . "\n";
 
     # 送信
     my $msg .= $send_header . "\r\n\r\n" . $send_body;
     my %res = $http->write_msg(
-        'soc'         => $acc,
-        'ssl'         => $ssl,
+        'soc'         => ( $opt{'ssl'} ? $ssl : $acc ),
         'sequence_no' => $header{'sequence_no'},
         'msg'         => $msg
     );
@@ -209,7 +211,7 @@ while (1) {
 
     Net::SSLeay::free($ssl) if ( $opt{'ssl'} );
     close $acc and print "close $acc\n";
-    $acc = undef;
+    $ssl = $acc = undef;
 }
 
 close $out if ( defined $out );
