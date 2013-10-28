@@ -51,11 +51,12 @@ my %stathash = (
 
 # デフォルトオプション
 my %opt = (
-    'port'    => 8888,
-    'status'  => "200",
-    'file'    => "server.log",
-    'ssl'     => 0,
-    'body'    => "{\"result\":\"OK\",\"cid\":\"test_cid\",\"start_code\":\"012345678\"}",
+    'port'   => 8888,
+    'status' => "200",
+    'file'   => "server.log",
+    'ssl'    => 0,
+    'body' =>
+      "{\"result\":\"OK\",\"cid\":\"test_cid\",\"start_code\":\"012345678\"}",
     'vorbis'  => 0,
     'help'    => 0,
     'version' => 0
@@ -63,7 +64,7 @@ my %opt = (
 
 # バージョン情報表示
 sub print_version {
-    print "$progname version "
+    print "$progname version " 
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
@@ -184,26 +185,28 @@ while (1) {
     }
 
     # ヘッダ受信
-    print "ssl: " . $opt{'ssl'} . "\n";
-    my $http = Http->new( 'ssl' => $opt{'ssl'}, 'fd' => $out, 'vorbis' => $opt{'vorbis'} );
+    my $http = Http->new(
+        'ssl'    => $opt{'ssl'},
+        'fd'     => $out,
+        'vorbis' => $opt{'vorbis'}
+    );
     print $out $http->datetime("Started.") . "\n";
-    printf("acc: %s\n", ( $opt{'ssl'} ? $ssl : $acc ) );
-    my %header = $http->read_header('soc' => ( $opt{'ssl'} ? $ssl : $acc ) );
+    my %header = $http->read_header( 'soc' => ( $opt{'ssl'} ? $ssl : $acc ) );
     next unless (%header);
-    print $header{'buffer'} || '' . "\n" if ($header{'len'});
+    print $header{'buffer'} || '' . "\n" if ( $header{'len'} );
 
     # ボディ受信
     my %body = $http->read_body(
-        'soc'  => ( $opt{'ssl'} ? $ssl : $acc ),
+        'soc' => ( $opt{'ssl'} ? $ssl : $acc ),
         'left' => $header{'left'}
     );
-    print $body{'buffer'} || '' . "\n" if ($body{'len'});
+    print $body{'buffer'} || '' . "\n" if ( $body{'len'} );
     print $out "\n" . $http->datetime("Done.") . "\n";
 
     # 送信
     my $msg .= $send_header . "\r\n\r\n" . $send_body;
     my %res = $http->write_msg(
-        'soc'         => ( $opt{'ssl'} ? $ssl : $acc ),
+        'soc' => ( $opt{'ssl'} ? $ssl : $acc ),
         'sequence_no' => $header{'sequence_no'},
         'msg'         => $msg
     );

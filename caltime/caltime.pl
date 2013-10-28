@@ -48,17 +48,15 @@ my %stathash = (
     'EX_NG' => 1,    # 異常終了
 );
 
-
 # バージョン情報表示
 sub print_version {
-    print "$progname version "
+    print "$progname version " 
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
       . "\n";
     exit( $stathash{'EX_OK'} );
 }
-
 
 # ヘルプ表示
 sub usage {
@@ -153,7 +151,6 @@ sub sum_weekly {
       . $sep
       . $worktime . "\n";
 }
-
 
 # 結果の表示
 sub print_result {
@@ -263,7 +260,6 @@ sub read_files {
     }
 }
 
-
 # ファイルを処理
 sub read_file {
     my $file = shift;
@@ -307,15 +303,15 @@ sub read_file {
 
         (
             $date, $week, $begin, $inf,  undef, $comment,
-            undef, undef, undef,  undef, $end, undef, undef,
-            undef, undef, $remarks
+            undef, undef, undef,  undef, $end,  undef,
+            undef, undef, undef,  $remarks
         ) = split( /,/, $line );
 
         next unless ( ( defined $date ) || ( $date eq "" ) );
         my $cmp = $date;
-        $cmp =~ s/\///g;        # スラッシュ削除
+        $cmp =~ s/\///g;    # スラッシュ削除
         next if ( defined $opt{'begin'} && ( $cmp lt $opt{'begin'} ) );
-        next if ( defined $opt{'end'} && ( $opt{'end'} lt $cmp ) );
+        next if ( defined $opt{'end'}   && ( $opt{'end'} lt $cmp ) );
 
         $output .= $date;
         $output .= $sep;
@@ -328,9 +324,10 @@ sub read_file {
             $begin = $end = undef if ( $remarks =~ m/^\"no\"/ );
         }
 
-        # 始業時刻のコメントの先頭に時刻フォーマットの文字列がある場合
+# 始業時刻のコメントの先頭に時刻フォーマットの文字列がある場合
         if ( defined $comment ) {
-            if ( $comment =~ m/^\"\d{2}:\d{2}\"/ ) {  # 時刻からオフセット値を求める
+            if ( $comment =~ m/^\"\d{2}:\d{2}\"/ )
+            {    # 時刻からオフセット値を求める
                 $comment = substr( $comment, 0, 5 );
                 $comment = conv_min($comment);
                 print "$comment\n" if ( $opt{'verbose'} );
@@ -383,8 +380,10 @@ sub read_file {
     };
     push( @filelst, $file );
     my ( $month, undef, undef ) = fileparse( $file, ('.csv') );
-    if ( defined $opt{'begin'} && ( substr($opt{'begin'}, 0, 6 ) le $month ) ) {
-        if ( defined $opt{'end'} && ( $month le substr($opt{'end'}, 0, 6) ) ) {
+    if ( defined $opt{'begin'} && ( substr( $opt{'begin'}, 0, 6 ) le $month ) )
+    {
+        if ( defined $opt{'end'} && ( $month le substr( $opt{'end'}, 0, 6 ) ) )
+        {
 
             $month = decode( $dec, $month );
             @{ $grouphash{$file} } = (
@@ -404,7 +403,7 @@ sub read_file {
             $person .= ".csv";
             $person = encode( $enc, $person );
             open $out, ">", "$person"
-                or die "open[$person]: $!";
+              or die "open[$person]: $!";
             print $out encode( $enc, $output );
             close $out;
         }
