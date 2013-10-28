@@ -205,7 +205,7 @@ sub calc_sum {
     # 休日出勤
     if ($holiday) {
         $common += $over if ( defined $over );
-        $output .= $common;
+        $output .= $common if ( defined $common );
     }
     $output .= $sep;
 

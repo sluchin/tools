@@ -52,14 +52,15 @@ my %stathash = (
 
 # デフォルトオプション
 my %opt = (
-    'dest'    => 'localhost',
-    'port'    => 8888,
-    'ssl'     => 0,
-    'file'    => "client.log",
-    'repeat'  => 1,
-    'vorbis'  => 0,
-    'help'    => 0,
-    'version' => 0
+    'dest'     => 'localhost',
+    'port'     => 8888,
+    'ssl'      => 0,
+    'file'     => "client.log",
+    'filelist' => '',
+    'count'    => 1,
+    'vorbis'   => 0,
+    'help'     => 0,
+    'version'  => 0
 );
 
 # バージョン情報表示
@@ -82,14 +83,15 @@ sub usage {
 # オプション引数
 Getopt::Long::Configure(qw{no_getopt_compat no_auto_abbrev no_ignore_case});
 GetOptions(
-    'dest|i=s'  => \$opt{'dest'},
-    'port|p=i'  => \$opt{'port'},
-    'ssl'       => \$opt{'ssl'},
-    'file|f=s'  => \$opt{'file'},
-    'count|c=i' => \$opt{'count'},
-    'vorbis|v'  => \$opt{'vorbis'},
-    'help|h|?'  => \$opt{'help'},
-    'version|V' => \$opt{'version'}
+    'dest|i=s'     => \$opt{'dest'},
+    'port|p=i'     => \$opt{'port'},
+    'ssl'          => \$opt{'ssl'},
+    'file|f=s'     => \$opt{'file'},
+    'filelist|l=s' => \$opt{'filelist'},
+    'count|c=i'    => \$opt{'count'},
+    'vorbis|v'     => \$opt{'vorbis'},
+    'help|h|?'     => \$opt{'help'},
+    'version|V'    => \$opt{'version'}
   )
   or usage()
   and exit( $stathash{'EX_NG'} );
@@ -197,6 +199,7 @@ client.pl [options]
    -p,  --port       This parameter sets port number.
         --ssl        Send for ssl.
    -f,  --file       Output filename.
+   -l,  --filelist   Send filelist of data.
    -c,  --count      Repeat count.
    -v,  --vorbis     Display extra information.
    -h,  --help       Display this help and exit.
