@@ -115,7 +115,7 @@ sub create_window {
     $mw->protocol( 'WM_DELETE_WINDOW', \&Exit );
     $mw->title(
         decode_utf8("タイムカード") . "  [v" . $args{'version'} . "]" );
-    $mw->geometry("500x300");
+    $mw->geometry("500x400");
     $mw->resizable( 0, 0 );
 
     if ( -f $args{'iconfile'} ) {
