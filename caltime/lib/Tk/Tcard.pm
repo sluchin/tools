@@ -112,7 +112,7 @@ sub create_window {
     );
     my $mw;
     $mw = MainWindow->new();
-    $mw->protocol( 'WM_DELETE_WINDOW', \&Exit );
+    $mw->protocol( 'WM_DELETE_WINDOW', \&_exit );
     $mw->title(
         decode_utf8("タイムカード") . "  [v" . $args{'version'} . "]" );
     $mw->geometry("500x400");
@@ -237,7 +237,7 @@ sub _tab_setime {
         -text    => decode_utf8("ダウンロード"),
         -command => [ $dlcmd, $self->{'entry'}, $self->{'date'} ]
     )->grid( -row => 3, -column => 3, -padx => 15, -pady => 15 );
-    $tab->Button( -text => decode_utf8("終了"), -command => sub { Exit(); } )
+    $tab->Button( -text => decode_utf8("終了"), -command => sub { _exit(); } )
       ->grid( -row => 4, -column => 4, -padx => 15, -pady => 15 );
 }
 
@@ -305,7 +305,7 @@ sub _tab_edit {
         -command => [ $editcmd, $entry, $self->{'date'}, $old, $new ]
     )->grid( -row => 6, -column => 4, -pady => 10 );
 
-    $tab->Button( -text => decode_utf8("終了"), -command => sub { Exit(); } )
+    $tab->Button( -text => decode_utf8("終了"), -command => sub { _exit(); } )
       ->grid( -row => 7, -column => 5, -padx => 15, -pady => 15 );
 }
 
@@ -345,7 +345,7 @@ sub _tab_conf {
         -command => [ $savecmd, $entdir, $entid, $entpw ]
     )->grid( -row => 4, -column => 3, -pady => 10 );
 
-    $tab->Button( -text => decode_utf8("終了"), -command => sub { Exit(); } )
+    $tab->Button( -text => decode_utf8("終了"), -command => sub { _exit(); } )
       ->grid( -row => 5, -column => 5, -padx => 15, -pady => 15 );
 }
 
@@ -374,7 +374,7 @@ sub _dir_dialog {
 }
 
 # 後処理
-sub Exit {
+sub _exit {
     exit( $stathash{'EX_OK'} );
 }
 
