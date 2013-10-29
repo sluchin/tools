@@ -232,7 +232,7 @@ sub _read {
         die_if_ssl_error("ssl read");
     }
     else {
-        #read( $soc, $buf, 12 );
+        read( $soc, $buf, 12 );
         #recv( $soc, $buf, 12, MSG_WAITALL);
         $buf = <$soc> || '';
     }

@@ -453,11 +453,12 @@ sub tcard_edit {
       or return
       if ( !defined $dt || length $dt ne 8 );
 
-    foreach my $key ( keys $new ) {
-        if ( exists $old->{$key} && $old->{$key} eq $new->{$key} ) {
-            $new->{$key} = undef;
-        }
-    }
+    $new->{'stime'} = undef
+        if ( exists $old->{'stime'} && ( $old->{'stime'} eq $new->{'stime'} ) );
+
+    $new->{'etime'} = undef
+        if ( exists $old->{'etime'} && ( $old->{'etime'} eq $new->{'etime'} ) );
+
     map { $log->debug( encode( $enc, "$_(new) => " . ( $new->{$_} || '' ) ) ) }
       keys $new
       if $opt{'vorbis'};
