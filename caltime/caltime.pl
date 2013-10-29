@@ -380,33 +380,30 @@ sub read_file {
     };
     push( @filelst, $file );
     my ( $month, undef, undef ) = fileparse( $file, ('.csv') );
-    if ( defined $opt{'begin'} && ( substr( $opt{'begin'}, 0, 6 ) le $month ) )
+    if ( ( !defined $opt{'begin'} || ( substr( $opt{'begin'}, 0, 6 ) le $month ) ) &&
+       ( !defined $opt{'end'} || ( $month le substr( $opt{'end'}, 0, 6 ) ) ) )
     {
-        if ( defined $opt{'end'} && ( $month le substr( $opt{'end'}, 0, 6 ) ) )
-        {
 
-            $month = decode( $dec, $month );
-            @{ $grouphash{$file} } = (
-                $month,       $group,         $name,
-                $common_sum,  $over_sum,      $late_sum,
-                $holiday_sum, $holi_late_sum, $worktime
-            );
+        $month = decode( $dec, $month );
+        @{ $grouphash{$file} } = (
+            $month,       $group,         $name,
+            $common_sum,  $over_sum,      $late_sum,
+            $holiday_sum, $holi_late_sum, $worktime
+        );
 
-            print $debug . "\n" if ( $opt{'verbose'} );
-            printf "%s\n", encode( $enc, $output ) if ( $opt{'verbose'} );
-            print_result( $name, $month );
-
-            # ファイルに出力
-            $person .= $month;
-            $person .= "_" . $group unless ( $group eq "" );
-            $person .= "_" . $name unless ( $name eq "" );
-            $person .= ".csv";
-            $person = encode( $enc, $person );
-            open $out, ">", "$person"
-              or die "open[$person]: $!";
-            print $out encode( $enc, $output );
-            close $out;
-        }
+        print $debug . "\n" if ( $opt{'verbose'} );
+        printf "%s\n", encode( $enc, $output ) if ( $opt{'verbose'} );
+        print_result( $name, $month );
+        # ファイルに出力
+        $person .= $month;
+        $person .= "_" . $group unless ( $group eq "" );
+        $person .= "_" . $name unless ( $name eq "" );
+        $person .= ".csv";
+        $person = encode( $enc, $person );
+        open $out, ">", "$person"
+          or die "open[$person]: $!";
+        print $out encode( $enc, $output );
+        close $out;
     }
     init();
 }
