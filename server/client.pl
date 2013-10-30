@@ -27,7 +27,7 @@ use warnings;
 use File::Basename;
 use Getopt::Long;
 use Socket;
-use bytes();
+use bytes ();
 use Sys::Hostname;
 
 our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
@@ -65,7 +65,7 @@ my %opt = (
 
 # バージョン情報表示
 sub print_version {
-    print "$progname version " 
+    print "$progname version "
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
@@ -112,8 +112,15 @@ my $send_body =
 open my $out, ">>", "$opt{'file'}"
   or die "open[$opt{'file'}]: $!";
 
+my $soc = undef;
+
+# シグナル
+$SIG{'INT'} = sub {
+    close $soc if ( defined $soc );
+    close $out if ( defined $out );
+};
+
 for ( my $i = 0 ; $i < $opt{'count'} ; $i++ ) {
-    my $socket = undef;
 
     if ( $opt{'ssl'} ) {
         eval { use Net::SSLeay qw(die_now die_if_ssl_error); };
@@ -131,27 +138,28 @@ for ( my $i = 0 ; $i < $opt{'count'} ; $i++ ) {
     my $ipaddr = gethostbyname( $opt{'dest'} );
     my $dest_params = sockaddr_in( $opt{'port'}, $ipaddr );
 
-    socket( $socket, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
+    socket( $soc, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
       or die("socket: $!\n");
-    connect( $socket, $dest_params ) or die "connect: $!";
-    select($socket);
+    connect( $soc, $dest_params ) or die "connect: $!";
+    select($soc);
     $| = 1;
     select(STDOUT);
 
-    my ( $ssl, $ctx );
+    my $ctx;
     if ( $opt{'ssl'} ) {
         my $ctx = Net::SSLeay::CTX_new()
           or die_now("Failed to create SSL_CTX $!");
         Net::SSLeay::CTX_set_options( $ctx, &Net::SSLeay::OP_ALL )
           and die_if_ssl_error("ssl ctx set options");
-        $ssl = Net::SSLeay::new($ctx) or die_now("Failed to create SSL $!");
-        Net::SSLeay::set_fd( $ssl, fileno($socket) );
-        my $res = Net::SSLeay::connect($ssl)
+        $soc = Net::SSLeay::new($ctx) or die_now("Failed to create SSL $!");
+        Net::SSLeay::set_fd( $soc, fileno($soc) );
+        my $res = Net::SSLeay::connect($soc)
           and die_if_ssl_error("ssl connect");
-        print "Cipher `" . Net::SSLeay::get_cipher($ssl) . "'\n";
+        print "Cipher `" . Net::SSLeay::get_cipher($soc) . "'\n";
     }
 
     my $http = Http->new(
+        'soc'    => $soc,
         'ssl'    => $opt{'ssl'},
         'fd'     => $out,
         'vorbis' => $opt{'vorbis'}
@@ -160,35 +168,30 @@ for ( my $i = 0 ; $i < $opt{'count'} ; $i++ ) {
     # 送信
     my $msg .= $send_header . "\r\n\r\n" . $send_body;
     my %res = $http->write_msg(
-        'soc' => ( $opt{'ssl'} ? $ssl : $socket ),
         'sequence_no' => 0,
         'msg'         => $msg
     );
-    CORE::shutdown $socket, 1;
+    CORE::shutdown $soc, 1;
     print $res{'buffer'} . "\n";
 
     # ヘッダ受信
     print $out $http->datetime("Started.") . "\n";
-    my %header =
-      $http->read_header( 'soc' => ( $opt{'ssl'} ? $ssl : $socket ) );
+    my %header = $http->read_header();
 
     print $header{'left'}   || '' . "\n";
     print $header{'buffer'} || '' . "\n";
 
     # ボディ受信
-    my %body = $http->read_body(
-        'soc' => ( $opt{'ssl'} ? $ssl : $socket ),
-        'left' => $header{'left'}
-    );
+    my %body = $http->read_body( 'left' => $header{'left'} );
     print $body{'buffer'} || '' . "\n";
     print $out "\n" . $http->datetime("Done.") . "\n";
 
     if ( $opt{'ssl'} ) {
-        Net::SSLeay::free($ssl);
+        Net::SSLeay::free($soc);
         Net::SSLeay::CTX_free($ctx);
     }
 
-    close $socket and print "close $socket\n";
+    close $soc and print "close $soc\n";
 }
 
 close $out if ( defined $out );

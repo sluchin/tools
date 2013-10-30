@@ -27,7 +27,7 @@ use warnings;
 use File::Basename;
 use Getopt::Long;
 use Socket;
-use bytes();
+use bytes ();
 
 our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
     sprintf "%d." . "%02d" x $#r, @r if (@r);
@@ -57,6 +57,7 @@ my %opt = (
     'ssl'    => 0,
     'body' =>
       "{\"result\":\"OK\",\"cid\":\"test_cid\",\"start_code\":\"012345678\"}",
+    'nogui'   => 0,
     'vorbis'  => 0,
     'help'    => 0,
     'version' => 0
@@ -64,7 +65,7 @@ my %opt = (
 
 # バージョン情報表示
 sub print_version {
-    print "$progname version " 
+    print "$progname version "
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
@@ -87,6 +88,7 @@ GetOptions(
     'file|f=s'   => \$opt{'file'},
     'ssl'        => \$opt{'ssl'},
     'body|b=s'   => \$opt{'body'},
+    'nogui'      => \$opt{'nogui'},
     'vorbis|v'   => \$opt{'vorbis'},
     'help|h|?'   => \$opt{'help'},
     'version|V'  => \$opt{'version'}
@@ -118,47 +120,8 @@ my $send_body = $opt{'body'};
 open my $out, ">>", "$opt{'file'}"
   or die "open[$opt{'file'}]: $!";
 
+my $soc = undef;
 my $acc = undef;
-
-if ( $opt{'ssl'} ) {
-    eval { use Net::SSLeay qw(die_now die_if_ssl_error); };
-    if ( !$@ ) {
-        print "Cannot use Net::SSLeay\nTry `cpan Net::SSLeay'\n";
-        exit( $stathash{'EX_NG'} );
-    }
-    Net::SSLeay::load_error_strings();
-    Net::SSLeay::SSLeay_add_ssl_algorithms();
-    Net::SSLeay::randomize();
-}
-
-my $ourip             = "\0\0\0\0";
-my $sockaddr_template = 'S n a4 x8';
-my $our_params = pack( $sockaddr_template, &PF_INET, $opt{'port'}, $ourip );
-my $ctx;
-my $ssl;
-my $addr;
-
-socket( my $socket, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
-  or die("socket: $!\n");
-setsockopt( $socket, SOL_SOCKET, SO_REUSEADDR, 1 )
-  or die("setsockopt SOL_SOCKET, SO_REUSEADDR: $!\n");
-bind( $socket, $our_params ) or die "bind:   $!";
-listen( $socket, SOMAXCONN ) or die "listen: $!";
-
-if ( $opt{'ssl'} ) {
-    die("no server.key") unless ( -f "server.key" );
-    die("no server.crt") unless ( -f "server.crt" );
-    $ctx = Net::SSLeay::CTX_new() or die_now("CTX_new ($ctx): $!");
-    Net::SSLeay::CTX_set_options( $ctx, &Net::SSLeay::OP_ALL )
-      and die_if_ssl_error("ssl ctx set options");
-
-    Net::SSLeay::CTX_use_RSAPrivateKey_file( $ctx, "server.key",
-        &Net::SSLeay::FILETYPE_PEM );
-    die_if_ssl_error("private key");
-    Net::SSLeay::CTX_use_certificate_file( $ctx, "server.crt",
-        &Net::SSLeay::FILETYPE_PEM );
-    die_if_ssl_error("certificate");
-}
 
 # シグナル
 $SIG{'INT'} = sub {
@@ -166,55 +129,135 @@ $SIG{'INT'} = sub {
     close $out if ( defined $out );
 };
 
-while (1) {
-    print "Accepting connections...\n";
-    ( $addr = accept( $acc, $socket ) ) or die "accept: $!";
-    select($acc);
-    $| = 1;
-    select(STDOUT);
+my $ourip             = "\0\0\0\0";
+my $sockaddr_template = 'S n a4 x8';
+my $ctx;
+my $addr;
 
-    my ( $af, $client_port, $client_ip ) = unpack( $sockaddr_template, $addr );
-    my @inetaddr = unpack( 'C4', $client_ip );
-    print "$af connection from " . join( '.', @inetaddr ) . ":$client_port\n";
+sub sock_bind {
+    my $port = shift;
 
     if ( $opt{'ssl'} ) {
-        $ssl = Net::SSLeay::new($ctx) or die_now("SSL_new ($ssl): $!");
-        Net::SSLeay::set_fd( $ssl, fileno($acc) );
-        my $err = Net::SSLeay::accept($ssl) and die_if_ssl_error('ssl accept');
-        print "Cipher `" . Net::SSLeay::get_cipher($ssl) . "'\n";
+        eval { use Net::SSLeay qw(die_now die_if_ssl_error); };
+        if ( !$@ ) {
+            print "Cannot use Net::SSLeay\nTry `cpan Net::SSLeay'\n";
+            exit( $stathash{'EX_NG'} );
+        }
+        Net::SSLeay::load_error_strings();
+        Net::SSLeay::SSLeay_add_ssl_algorithms();
+        Net::SSLeay::randomize();
     }
 
-    # ヘッダ受信
-    my $http = Http->new(
-        'ssl'    => $opt{'ssl'},
-        'fd'     => $out,
-        'vorbis' => $opt{'vorbis'}
-    );
-    print $out $http->datetime("Started.") . "\n";
-    my %header = $http->read_header( 'soc' => ( $opt{'ssl'} ? $ssl : $acc ) );
-    next unless (%header);
-    print $header{'buffer'} || '' . "\n" if ( $header{'len'} );
+    my $our_params = pack( $sockaddr_template, &PF_INET, $port, $ourip );
+    socket( $soc, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
+      or die("socket: $!\n");
+    setsockopt( $soc, SOL_SOCKET, SO_REUSEADDR, 1 )
+      or die("setsockopt SOL_SOCKET, SO_REUSEADDR: $!\n");
+    bind( $soc, $our_params ) or die "bind:   $!";
+    listen( $soc, SOMAXCONN ) or die "listen: $!";
 
-    # ボディ受信
-    my %body = $http->read_body(
-        'soc' => ( $opt{'ssl'} ? $ssl : $acc ),
-        'left' => $header{'left'}
-    );
-    print $body{'buffer'} || '' . "\n" if ( $body{'len'} );
-    print $out "\n" . $http->datetime("Done.") . "\n";
+    if ( $opt{'ssl'} ) {
+        die("no server.key") unless ( -f "server.key" );
+        die("no server.crt") unless ( -f "server.crt" );
+        $ctx = Net::SSLeay::CTX_new() or die_now("CTX_new ($ctx): $!");
+        Net::SSLeay::CTX_set_options( $ctx, &Net::SSLeay::OP_ALL )
+          and die_if_ssl_error("ssl ctx set options");
 
-    # 送信
-    my $msg .= $send_header . "\r\n\r\n" . $send_body;
-    my %res = $http->write_msg(
-        'soc' => ( $opt{'ssl'} ? $ssl : $acc ),
-        'sequence_no' => $header{'sequence_no'},
-        'msg'         => $msg
-    );
-    print $res{'buffer'} . "\n";
+        Net::SSLeay::CTX_use_RSAPrivateKey_file( $ctx, "server.key",
+            &Net::SSLeay::FILETYPE_PEM );
+        die_if_ssl_error("private key");
+        Net::SSLeay::CTX_use_certificate_file( $ctx, "server.crt",
+            &Net::SSLeay::FILETYPE_PEM );
+        die_if_ssl_error("certificate");
+    }
+}
 
-    Net::SSLeay::free($ssl) if ( $opt{'ssl'} );
-    close $acc and print "close $acc\n";
-    $ssl = $acc = undef;
+my $loop = 1;
+
+sub server {
+    my $header = shift;
+    my $body   = shift;
+
+    while ($loop) {
+        print "Accepting connections...\n";
+        ( $addr = accept( $acc, $soc ) ) or die "accept: $!";
+        select($acc);
+        $| = 1;
+        select(STDOUT);
+
+        my ( $af, $client_port, $client_ip ) =
+          unpack( $sockaddr_template, $addr );
+        my @inetaddr = unpack( 'C4', $client_ip );
+        print "$af connection from "
+          . join( '.', @inetaddr )
+          . ":$client_port\n";
+
+        print "ssl: " . ( $opt{'ssl'} || 0 ) . "\n" if ( $opt{'vorbis'} );
+        if ( $opt{'ssl'} ) {
+            $acc = Net::SSLeay::new($ctx) or die_now("SSL_new ($acc): $!");
+            Net::SSLeay::set_fd( $acc, fileno($acc) );
+            my $err = Net::SSLeay::accept($acc)
+              and die_if_ssl_error('ssl accept');
+            print "Cipher `" . Net::SSLeay::get_cipher($acc) . "'\n";
+        }
+
+        # ヘッダ受信
+        my $http = Http->new(
+            'soc'    => $acc,
+            'ssl'    => $opt{'ssl'},
+            'fd'     => $out,
+            'vorbis' => $opt{'vorbis'}
+        );
+        print $out $http->datetime("Started.") . "\n";
+        my %header = $http->read_header();
+        next unless (%header);
+        print "" . ( $header{'buffer'} || '' ) . "\n" if ( $header{'len'} );
+        print "left: " . ( $header{'left'} || '' ) . "\n" if ( $opt{'vorbis'} );
+
+        # ボディ受信
+        my %body = $http->read_body( 'left' => $header{'left'} );
+        print "" . ( $body{'buffer'} || '' ) . "\n" if ( $body{'len'} );
+        print $out "\n" . $http->datetime("Done.") . "\n";
+
+        # 送信
+        my $msg .= $header . "\r\n\r\n" . $body;
+        my %res = $http->write_msg(
+            'sequence_no' => $header{'sequence_no'},
+            'msg'         => $msg
+        );
+        print "" . ( $res{'buffer'} || '' ) . "\n";
+
+        Net::SSLeay::free($acc) if ( $opt{'ssl'} );
+        close $acc and print "close $acc\n";
+        $acc = undef;
+    }
+
+    close $soc if ( defined $soc );
+    $soc = undef;
+}
+
+sub server_stop {
+    $loop = 0;
+}
+
+sub window {
+    require Tk::HttpServer;
+    HttpServer->new(
+        'port'      => $opt{'port'},
+        'header'    => $send_header,
+        'body'      => $send_body,
+        'sockcmd'   => \&sock_bind,
+        'servercmd' => \&server
+    );
+
+}
+
+if ( $opt{'nogui'} ) {
+    sock_bind( $opt{'port'} );
+    server( $send_header, $send_body );
+}
+else {
+    window();
 }
 
 close $out if ( defined $out );
@@ -233,14 +276,15 @@ server.pl - http server program.
 server.pl [options]
 
  Options:
-   -p,  --port              This parameter sets port number.
-   -s,  --status=status     Setting http status(200,403,404).
-   -f,  --file              Output filename.
-        --ssl               Send for ssl.
-   -b,  --body              Send body.
-   -v,  --vorbis            Display extra information.
-   -h,  --help              Display this help and exit.
-   -V,  --version           Output version information and exit.
+   -p,  --port           This parameter sets port number.
+   -s,  --status=status  Setting http status(200,403,404).
+   -f,  --file           Output filename.
+        --ssl            Send for ssl.
+   -b,  --body           Send body.
+        --nogui          Command line interface.
+   -v,  --vorbis         Display extra information.
+   -h,  --help           Display this help and exit.
+   -V,  --version        Output version information and exit.
 
 =over 4
 

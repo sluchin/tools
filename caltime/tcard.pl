@@ -454,10 +454,10 @@ sub tcard_edit {
       if ( !defined $dt || length $dt ne 8 );
 
     $new->{'stime'} = undef
-        if ( exists $old->{'stime'} && ( $old->{'stime'} eq $new->{'stime'} ) );
+      if ( exists $old->{'stime'} && ( $old->{'stime'} eq $new->{'stime'} ) );
 
     $new->{'etime'} = undef
-        if ( exists $old->{'etime'} && ( $old->{'etime'} eq $new->{'etime'} ) );
+      if ( exists $old->{'etime'} && ( $old->{'etime'} eq $new->{'etime'} ) );
 
     map { $log->debug( encode( $enc, "$_(new) => " . ( $new->{$_} || '' ) ) ) }
       keys $new
