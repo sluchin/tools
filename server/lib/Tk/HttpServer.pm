@@ -101,12 +101,12 @@ sub create_window {
     }
     $self->{'mw'} = $mw;
 
-    _server( $self, $mw );
+    _server( $self );
 
     MainLoop();
 }
 
-sub _sever {
+sub _server {
     my $self = shift;
 
     my $sockcmd   = $self->{'sockcmd'};
@@ -119,17 +119,17 @@ sub _sever {
 
     $self->{'mw'}->Label( -text => decode_utf8("送信ヘッダ: ") )
       ->grid( -row => 2, -column => 1, -pady => 7 );
-    $self->{'mw'}->Entry(
-        -textvariable => \$self->{'header'},
-        -height       => 10,
-        -width        => 12
-    )->grid( -row => 2, -column => 2, -pady => 7 );
+    # $self->{'mw'}->Text(
+    #     -options => \$self->{'header'},
+    #     -height  => 10,
+    #     -width   => 12
+    # )->grid( -row => 2, -column => 2, -pady => 7 );
 
     $self->{'mw'}->Label( -text => decode_utf8("送信データ: ") )
       ->grid( -row => 3, -column => 1, -pady => 7 );
-    $self->{'mw'}
-      ->Entry( -textvariable => \$self->{'body'}, -height => 10, -width => 12 )
-      ->grid( -row => 3, -column => 2, -pady => 7 );
+    # $self->{'mw'}
+    #   ->Text( -options => \$self->{'body'}, -height => 10, -width => 12 )
+    #   ->grid( -row => 3, -column => 2, -pady => 7 );
 
     $self->{'mw'}->Button(
         -text    => decode_utf8("起動"),
