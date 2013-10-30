@@ -24,8 +24,10 @@
 
 use strict;
 use warnings;
-use File::Basename;
-use Getopt::Long;
+use File::Basename qw/basename dirname/;
+use File::Spec::Functions qw/catfile/;
+use Getopt::Long qw/GetOptions Configure/;
+use Encode qw/encode decode decode_utf8/;
 use Socket;
 use bytes ();
 
@@ -43,6 +45,8 @@ BEGIN {
 
 use Http;
 use Tk::HttpServer;
+
+my $iconfile = catfile( $progdir, "icon", "icon.xpm" );
 
 # ステータス
 my %stathash = (
@@ -113,7 +117,7 @@ my $send_header =
     "HTTP/1.1 "
   . $opt{'status'} . " "
   . ( $http_status{ $opt{'status'} } || "" )
-  . "\r\nConnection: close";
+  . "\nConnection: close";
 
 # ボディ
 my $send_body = $opt{'body'};
@@ -174,15 +178,12 @@ sub sock_bind {
     }
 }
 
-my $loop = 1;
-
 sub server {
-    my $header = shift;
-    my $body   = shift;
+    my $data = shift;
 
-    while ($loop) {
+    while (1) {
         print "Accepting connections...\n";
-        ( $addr = accept( $acc, $soc ) ) or die "accept: $!";
+        $addr = accept( $acc, $soc ) or die "accept: $!";
         select($acc);
         $| = 1;
         select(STDOUT);
@@ -222,10 +223,9 @@ sub server {
         print $out "\n" . $http->datetime("Done.") . "\n";
 
         # 送信
-        my $msg .= $header . "\r\n\r\n" . $body;
         my %res = $http->write_msg(
             'sequence_no' => $header{'sequence_no'},
-            'msg'         => $msg
+            'msg'         => $data
         );
         print "" . ( $res{'buffer'} || '' ) . "\n";
 
@@ -239,27 +239,31 @@ sub server {
 }
 
 sub server_stop {
-    $loop = 0;
+
 }
+
+my $data .= $send_header . "\n\n" . $send_body;
 
 sub window {
     $win = Tk::HttpServer->new(
-        'port'      => $opt{'port'},
-        'header'    => $send_header,
-        'body'      => $send_body,
+        'address'   => $addr,
+        'port'      => \$opt{'port'},
+        'data'      => $data,
         'sockcmd'   => \&sock_bind,
-        'servercmd' => \&server
+        'servercmd' => \&server,
+        'stopcmd'   => \&server_stop
     );
 
     $win->create_window(
-        #'iconfile' => $iconfile,
+        'iconfile' => $iconfile,
         'version'  => $VERSION,
     );
 }
 
 if ( $opt{'nogui'} ) {
     sock_bind( $opt{'port'} );
-    server( $send_header, $send_body );
+    $data =~ s/\n/\r\n/g;
+    server( $data );
 }
 else {
     window();

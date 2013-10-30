@@ -39,9 +39,6 @@ use Encode qw/decode_utf8/;
 use File::Basename qw/dirname/;
 use Tk;
 
-#use Tk::NoteBook;
-use Tk::DateEntry;
-
 # ステータス
 my %stathash = (
     'EX_OK' => 0,    # 正常終了
@@ -60,16 +57,21 @@ sub new {
 sub init {
     my $self = shift;
     my %args = (
+        'address'   => '',
         'port'      => '',
-        'header'    => '',
-        'body'      => '',
+        'data'      => '',
         'sockcmd'   => undef,
         'servercmd' => undef,
+        'stopcmd'   => undef,
         @_
     );
 
+    $self->{'address'}   = $args{'address'};
+    $self->{'port'}      = $args{'port'};
+    $self->{'data'}      = $args{'data'};
     $self->{'sockcmd'}   = $args{'sockcmd'};
     $self->{'servercmd'} = $args{'servercmd'};
+    $self->{'stopcmd'}   = $args{'stopcmd'};
 }
 
 =head1 METHODS
@@ -92,7 +94,7 @@ sub create_window {
     $mw->protocol( 'WM_DELETE_WINDOW', \&_exit );
     $mw->title(
         decode_utf8("HTTPサーバ") . "  [v" . $args{'version'} . "]" );
-    $mw->geometry("500x500");
+    $mw->geometry("600x600");
     $mw->resizable( 0, 0 );
 
     if ( -f $args{'iconfile'} ) {
@@ -112,36 +114,46 @@ sub _server {
     my $sockcmd   = $self->{'sockcmd'};
     my $servercmd = $self->{'servercmd'};
 
-    $self->{'mw'}->Label( -text => decode_utf8("ポート: ") )
+    $self->{'mw'}->Label( -text => decode_utf8("アドレス: ") )
       ->grid( -row => 1, -column => 1, -pady => 7 );
-    $self->{'mw'}->Entry( -textvariable => \$self->{'port'}, -width => 12 )
+    $self->{'mw'}->Label( -text => $self->{'address'} )
       ->grid( -row => 1, -column => 2, -pady => 7 );
 
-    $self->{'mw'}->Label( -text => decode_utf8("送信ヘッダ: ") )
+    $self->{'mw'}->Label( -text => decode_utf8("ポート: ") )
       ->grid( -row => 2, -column => 1, -pady => 7 );
-    # $self->{'mw'}->Text(
-    #     -options => \$self->{'header'},
-    #     -height  => 10,
-    #     -width   => 12
-    # )->grid( -row => 2, -column => 2, -pady => 7 );
+    $self->{'mw'}->Entry( -textvariable => $self->{'port'}, -width => 12 )
+      ->grid( -row => 2, -column => 2, -pady => 7 );
 
-    $self->{'mw'}->Label( -text => decode_utf8("送信データ: ") )
+    $self->{'mw'}->Label( -text => decode_utf8("送信データ") )
       ->grid( -row => 3, -column => 1, -pady => 7 );
-    # $self->{'mw'}
-    #   ->Text( -options => \$self->{'body'}, -height => 10, -width => 12 )
-    #   ->grid( -row => 3, -column => 2, -pady => 7 );
+    my $t = $self->{'mw'}->Scrolled('Text',
+                            -background => 'white',
+                            -width      => 40,
+                            -height     => 10,
+                            -wrap       => 'none',
+                            -scrollbars => 'se'
+    )->grid( -row => 3, -column => 2, -columnspan => 2, -pady => 7 );
+
+    $t->insert('1.0', $self->{'data'});
 
     $self->{'mw'}->Button(
         -text    => decode_utf8("起動"),
-        -command => sub { $sockcmd->(); $servercmd->(); }
+        -command => sub {
+            $self->{'sockcmd'}->($self->{'port'});
+
+            $self->{'servercmd'}->(sub {
+                my $c = $t->get('1.0', 'end');
+                                 $c =~ s/\n/\r\n/g;
+                }, 1);
+        }
     )->grid( -row => 4, -column => 2, -padx => 15, -pady => 15 );
     $self->{'mw'}
-      ->Button( -text => decode_utf8("停止"), -command => sub { _exit(); } )
+      ->Button( -text => decode_utf8("停止"), -command => sub { $self->{'stopcmd'}; } )
       ->grid( -row => 4, -column => 3, -padx => 15, -pady => 15 );
 
     $self->{'mw'}
       ->Button( -text => decode_utf8("終了"), -command => sub { _exit(); } )
-      ->grid( -row => 5, -column => 5, -padx => 15, -pady => 15 );
+      ->grid( -row => 5, -column => 4, -padx => 15, -pady => 15 );
 }
 
 # 後処理
