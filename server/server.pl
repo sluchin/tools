@@ -42,6 +42,7 @@ BEGIN {
 }
 
 use Http;
+use Tk::HttpServer;
 
 # ステータス
 my %stathash = (
@@ -120,6 +121,7 @@ my $send_body = $opt{'body'};
 open my $out, ">>", "$opt{'file'}"
   or die "open[$opt{'file'}]: $!";
 
+my $win = undef;
 my $soc = undef;
 my $acc = undef;
 
@@ -241,8 +243,7 @@ sub server_stop {
 }
 
 sub window {
-    require Tk::HttpServer;
-    HttpServer->new(
+    $win = Tk::HttpServer->new(
         'port'      => $opt{'port'},
         'header'    => $send_header,
         'body'      => $send_body,
@@ -250,6 +251,10 @@ sub window {
         'servercmd' => \&server
     );
 
+    $win->create_window(
+        #'iconfile' => $iconfile,
+        'version'  => $VERSION,
+    );
 }
 
 if ( $opt{'nogui'} ) {
