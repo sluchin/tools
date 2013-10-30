@@ -36,7 +36,7 @@ package Http;
 use strict;
 use warnings;
 use Socket;
-use bytes();
+use bytes ();
 
 # ステータス
 my %stathash = (
@@ -56,12 +56,14 @@ sub new {
 sub init {
     my $self = shift;
     my %args = (
+        'soc'    => undef,
         'ssl'    => 0,
         'fd'     => undef,
         'vorbis' => 0,
         @_
     );
 
+    $self->{'soc'}    = $args{'soc'};
     $self->{'ssl'}    = $args{'ssl'};
     $self->{'fd'}     = $args{'fd'};
     $self->{'vorbis'} = $args{'vorbis'};
@@ -77,17 +79,13 @@ sub init {
 
 sub read_header {
     my $self = shift;
-    my %args = (
-        'soc'  => undef,
-        @_
-    );
-    print "read_header\n" if ( $self->{'vorbis'} );
+    print "read_header: $!\n" if ( $self->{'vorbis'} );
     my ( $read_buffer, $buf );
     my ( $len, $rlen ) = 0;
 
     while (1) {
         $len = 0;
-        ( $len, $buf ) = _read($self, $args{'soc'});
+        ( $len, $buf ) = _read($self, $self->{'soc'});
         printf "\nHeader: %d bytes read.\n", ( $len || 0 );
         print "len=" . $len . "\n" if ( $self->{'vorbis'} );
         $read_buffer .= $buf || '';
@@ -97,7 +95,7 @@ sub read_header {
     }
     print "*****\n" . $read_buffer . "\n" if ( $self->{'vorbis'} );
     print "rlen=" . ( $rlen || 0 ) . "\n";
-    ( $read_buffer =~ m/\r\n\r\n/ ) or return undef;
+    ( $read_buffer =~ m/\r\n\r\n/ ) or return {};
 
     # ヘッダ長を取得
     my @header = split m/\r\n\r\n/, $read_buffer;    # ヘッダ分割
@@ -128,9 +126,9 @@ sub read_header {
     print { $self->{'fd'} } $read_buffer;
 
     return (
-        'left'        => $left,
-        'buffer'      => $read_buffer,
-        'sequence_no' => $sequence_no,
+        'left'        => ( $left || 0 ),
+        'buffer'      => ( $read_buffer || '' ),
+        'sequence_no' => ( $sequence_no || 0 )
     );
 }
 
@@ -143,17 +141,16 @@ sub read_header {
 sub read_body {
     my $self = shift;
     my %args = (
-        'soc'  => undef,
-        'left' => undef,
+        'left' => 0,
         @_
     );
-    print "read_body\n" if ( $self->{'vorbis'} );
-    my $left = $args{'left'};
+    print "read_body: $!\n" if ( $self->{'vorbis'} );
+    my $left = $args{'left'} || 0;
     my ( $len, $rlen );
     my $read_buffer;
     while ( $left > 0 ) {
         $len = 0;
-        ( $len, $read_buffer ) = _read($self, $args{'soc'});
+        ( $len, $read_buffer ) = _read($self, $self->{'soc'});
         printf "\nBody: %d bytes read.\n", ( $len || 0 );
         last if ( !$len );
 
@@ -162,8 +159,8 @@ sub read_body {
         $rlen += $len;
     }
     return (
-        'len'    => $rlen || 0,
-        'buffer' => $read_buffer,
+        'len'    => ( $rlen || 0 ),
+        'buffer' => ( $read_buffer ||'' )
     );
 }
 
@@ -176,29 +173,28 @@ sub read_body {
 sub write_msg {
     my $self = shift;
     my %args = (
-        'soc'         => undef,
         'sequence_no' => '',
         'msg'         => '',
         @_
     );
-    print "write_msg\n" if ( $self->{'vorbis'} );
+    print "write_msg: $!\n" if ( $self->{'vorbis'} );
     my ( $header, $body ) = split m/\r\n\r\n/, $args{'msg'};
 
     # 送信メッセージ
     my $msg =
-         $header #. "\r\nSequenceNo: " . ( $args{'sequence_no'} || '0' )
+         $header . "\r\nSequenceNo: " . ( $args{'sequence_no'} || '0' )
        . "\r\nContent-Length: " . ( ( bytes::length($body) ) || '0' )
        . "\r\nDate: " . ( datetime() || '' )
        . "\r\n" . "Server: test-server\r\n\r\n"
        . $body;
 
     # 送信
-    my $len = _write($self, $args{'soc'}, $msg);
+    my $len = _write($self, $self->{'soc'}, $msg);
     printf "\n%d bytes write.\n", $len || 0;
 
     return (
-        'len'    => $len,
-        'buffer' => $msg
+        'len'    => ( $len || 0 ),
+        'buffer' => ( $msg || '' )
     );
 }
 
@@ -232,17 +228,15 @@ sub _read {
         die_if_ssl_error("ssl read");
     }
     else {
-        read( $soc, $buf, 12 );
+        #read( $soc, $buf, 12 );
         #recv( $soc, $buf, 12, MSG_WAITALL);
         $buf = <$soc> || '';
     }
     my $len = bytes::length( $buf || '' ) || 0;
     print "len: $len\n" if ($self->{'vorbis'});
     die "read error: $!\n"
-      unless $len
-      or $!{EAGAIN}
-      or $!{EINTR}
-      or $!{ENOBUFS};
+      if (!$len
+          && (!$!{EAGAIN} && !$!{EINTR} && !$!{ENOBUFS} && $! ) );
     return ( $len, $buf );
 }
 
@@ -262,9 +256,7 @@ sub _write {
     }
     my $len = bytes::length( $msg || '' ) || 0;
     die "write error: $!\n"
-      if $!{EAGAIN}
-      or $!{EINTR}
-      or $!{ENOBUFS};
+      if ( !$!{EAGAIN} && !$!{EINTR} && !$!{ENOBUFS} && $! );
     return $len;
 }
 

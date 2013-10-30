@@ -50,7 +50,7 @@ my %stathash = (
 
 # バージョン情報表示
 sub print_version {
-    print "$progname version " 
+    print "$progname version "
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
@@ -380,8 +380,13 @@ sub read_file {
     };
     push( @filelst, $file );
     my ( $month, undef, undef ) = fileparse( $file, ('.csv') );
-    if ( ( !defined $opt{'begin'} || ( substr( $opt{'begin'}, 0, 6 ) le $month ) ) &&
-       ( !defined $opt{'end'} || ( $month le substr( $opt{'end'}, 0, 6 ) ) ) )
+    if (
+        (
+            !defined $opt{'begin'}
+            || ( substr( $opt{'begin'}, 0, 6 ) le $month )
+        )
+        && ( !defined $opt{'end'} || ( $month le substr( $opt{'end'}, 0, 6 ) ) )
+      )
     {
 
         $month = decode( $dec, $month );
@@ -394,6 +399,7 @@ sub read_file {
         print $debug . "\n" if ( $opt{'verbose'} );
         printf "%s\n", encode( $enc, $output ) if ( $opt{'verbose'} );
         print_result( $name, $month );
+
         # ファイルに出力
         $person .= $month;
         $person .= "_" . $group unless ( $group eq "" );

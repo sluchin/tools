@@ -41,10 +41,6 @@ use Tk;
 use Tk::NoteBook;
 use Tk::DateEntry;
 
-use Exporter;
-use base qw/Exporter/;
-our @EXPORT = qw/tab_setime tab_edit tab_conf work_state/;
-
 # ステータス
 my %stathash = (
     'EX_OK' => 0,    # 正常終了
@@ -97,7 +93,7 @@ sub init {
 
 =head1 METHODS
 
-=head2 window
+=head2 create_window
 
 ウィンドウ生成
 
@@ -135,6 +131,7 @@ sub create_window {
     _tab_setime( $self, $tab1 );
     _tab_edit( $self, $tab2 );
     _tab_conf( $self, $tab3 );
+
     MainLoop();
 }
 
@@ -237,8 +234,10 @@ sub _tab_setime {
         -text    => decode_utf8("ダウンロード"),
         -command => [ $dlcmd, $self->{'entry'}, $self->{'date'} ]
     )->grid( -row => 3, -column => 3, -padx => 15, -pady => 15 );
-    $tab->Button( -text => decode_utf8("終了"), -command => sub { _exit(); } )
-      ->grid( -row => 4, -column => 4, -padx => 15, -pady => 15 );
+    $tab->Button(
+        -text    => decode_utf8("終了"),
+        -command => sub { _exit(); }
+    )->grid( -row => 4, -column => 4, -padx => 15, -pady => 15 );
 }
 
 # 編集タブ
@@ -305,8 +304,10 @@ sub _tab_edit {
         -command => [ $editcmd, $entry, $self->{'date'}, $old, $new ]
     )->grid( -row => 6, -column => 4, -pady => 10 );
 
-    $tab->Button( -text => decode_utf8("終了"), -command => sub { _exit(); } )
-      ->grid( -row => 7, -column => 5, -padx => 15, -pady => 15 );
+    $tab->Button(
+        -text    => decode_utf8("終了"),
+        -command => sub { _exit(); }
+    )->grid( -row => 7, -column => 5, -padx => 15, -pady => 15 );
 }
 
 # 設定タブ
@@ -345,8 +346,10 @@ sub _tab_conf {
         -command => [ $savecmd, $entdir, $entid, $entpw ]
     )->grid( -row => 4, -column => 3, -pady => 10 );
 
-    $tab->Button( -text => decode_utf8("終了"), -command => sub { _exit(); } )
-      ->grid( -row => 5, -column => 5, -padx => 15, -pady => 15 );
+    $tab->Button(
+        -text    => decode_utf8("終了"),
+        -command => sub { _exit(); }
+    )->grid( -row => 5, -column => 5, -padx => 15, -pady => 15 );
 }
 
 # 日付パース
