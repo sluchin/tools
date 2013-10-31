@@ -38,7 +38,8 @@ use warnings;
 use Encode qw/decode_utf8/;
 use File::Basename qw/dirname/;
 use Tk;
-use threads;
+#use threads;
+#use Thread::Queue;
 
 # ステータス
 my %stathash = (
@@ -92,7 +93,7 @@ sub create_window {
     );
     my $mw;
     $mw = MainWindow->new();
-    $mw->protocol( 'WM_DELETE_WINDOW', \&_exit );
+    $mw->protocol( 'WM_DELETE_WINDOW', [\&_exit, $mw] );
     $mw->title(
         decode_utf8("HTTPサーバ") . "  [v" . $args{'version'} . "]" );
     $mw->geometry("500x500");
@@ -109,7 +110,9 @@ sub create_window {
     MainLoop();
 }
 
+my $pid;
 my $thread = undef;
+my $contents;
 sub _server {
     my $self = shift;
 
@@ -141,24 +144,28 @@ sub _server {
     $self->{'mw'}->Button(
         -text    => decode_utf8("起動"),
         -command => sub {
-            $self->{'sockcmd'}->($self->{'port'});
-            my $contents = $t->get('1.0', 'end');
+            $contents = $t->get('1.0', 'end');
             $contents =~ s/\n/\r\n/g;
-            $SIG{'INT'} = sub { print "thread catch INT\n"; threads->exit(); };
-            $thread = threads->create(
-                                { 'context'  => 'list',
-                                'stack_size' => 32*4096,
-                                'exit'       => 'thread_only' },
-                                $self->{'servercmd'}, $contents);
-            #$thread->detach();
+            $SIG{'INT'} = $self->{'stopcmd'};
+            $pid = fork();
+            if (!$pid) {
+                print "parent\n";
+                sleep 1;
+            } else {
+                print "child\n";
+                $self->{'sockcmd'}->($self->{'port'});
+                $self->{'servercmd'}->($contents);
+                exit(0);
+            }
             return;
         }
     )->grid( -row => 4, -column => 2, -padx => 15, -pady => 15 );
     $self->{'mw'}
       ->Button( -text => decode_utf8("停止"), -command => sub {
           #threads->set_thread_exit_only(1);
-          $thread->kill('INT');
+          #$thread->kill('INT');
           #threads->exit() if (defined $thread) ;
+          kill('INT', $pid);
       } )
       ->grid( -row => 4, -column => 3, -padx => 15, -pady => 15 );
 
@@ -169,12 +176,16 @@ sub _server {
 
 # 後処理
 sub _exit {
-    print "_exit: " . $thread . "\n";
-    if (defined $thread) {
-        threads->exit() if threads->can('exit');
-    }
-    exit( $stathash{'EX_OK'} );
+    my $self = shift;
+    print "_exit\n";
+    $self->{'mw'}->destroy;
+    #exit( $stathash{'EX_OK'} );
 }
+
+# sub sig_handle {
+#     print "fork catch INT\n";
+#     exit( $stathash{'EX_OK'} );
+# }
 
 1;
 

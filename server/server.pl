@@ -138,7 +138,7 @@ sub sig_handler {
     $soc = $acc = $out = undef;
 }
 
-$SIG{'INT'} = \&sig_handler;
+#$SIG{'INT'} = \&sig_handler;
 
 my $ourip             = "\0\0\0\0";
 my $sockaddr_template = 'S n a4 x8';
@@ -188,11 +188,11 @@ sub server {
 
     while (1) {
         print "Accepting connections...\n";
-        $addr = accept( $acc, $soc ) or die "accept: $!";
+        $addr = accept( $acc, $soc ); # or die "accept error: $!";
+        last if ($!{EINTR});
         select($acc);
         $| = 1;
         select(STDOUT);
-        last if ($!{EINTR});
 
         my ( $af, $client_port, $client_ip ) =
           unpack( $sockaddr_template, $addr );
@@ -239,12 +239,10 @@ sub server {
         close $acc and print "close $acc\n";
         $acc = undef;
     }
+    print "loop out\n";
 
     close $soc if ( defined $soc );
     $soc = undef;
-}
-
-sub server_stop {
 
 }
 
@@ -252,11 +250,12 @@ my $data .= $send_header . "\n\n" . $send_body;
 
 sub server_loop {
     my $response = shift || $data;
-    $SIG{'INT'} = sub { print "thread INT\n"; threads->exit(); };
     sock_bind( $opt{'port'} );
     $data =~ s/\n/\r\n/g;
     server( $response );
+    exit(0)
 }
+
 
 sub window {
     $win = Tk::HttpServer->new(
@@ -265,7 +264,7 @@ sub window {
         'data'      => $data,
         'sockcmd'   => \&sock_bind,
         'servercmd' => \&server_loop,
-        'stopcmd'   => \&server_stop
+        'stopcmd'   => \&sig_handler
     );
 
     $win->create_window(
