@@ -38,6 +38,7 @@ use warnings;
 use Encode qw/decode_utf8/;
 use File::Basename qw/dirname/;
 use Tk;
+use threads;
 
 # ステータス
 my %stathash = (
@@ -94,7 +95,7 @@ sub create_window {
     $mw->protocol( 'WM_DELETE_WINDOW', \&_exit );
     $mw->title(
         decode_utf8("HTTPサーバ") . "  [v" . $args{'version'} . "]" );
-    $mw->geometry("600x600");
+    $mw->geometry("500x500");
     $mw->resizable( 0, 0 );
 
     if ( -f $args{'iconfile'} ) {
@@ -108,16 +109,17 @@ sub create_window {
     MainLoop();
 }
 
+my $thread = undef;
 sub _server {
     my $self = shift;
 
     my $sockcmd   = $self->{'sockcmd'};
     my $servercmd = $self->{'servercmd'};
 
-    $self->{'mw'}->Label( -text => decode_utf8("アドレス: ") )
-      ->grid( -row => 1, -column => 1, -pady => 7 );
-    $self->{'mw'}->Label( -text => $self->{'address'} )
-      ->grid( -row => 1, -column => 2, -pady => 7 );
+    # $self->{'mw'}->Label( -text => decode_utf8("アドレス: ") )
+    #   ->grid( -row => 1, -column => 1, -pady => 7 );
+    # $self->{'mw'}->Label( -text => $self->{'address'} )
+    #   ->grid( -row => 1, -column => 2, -pady => 7 );
 
     $self->{'mw'}->Label( -text => decode_utf8("ポート: ") )
       ->grid( -row => 2, -column => 1, -pady => 7 );
@@ -140,15 +142,24 @@ sub _server {
         -text    => decode_utf8("起動"),
         -command => sub {
             $self->{'sockcmd'}->($self->{'port'});
-
-            $self->{'servercmd'}->(sub {
-                my $c = $t->get('1.0', 'end');
-                                 $c =~ s/\n/\r\n/g;
-                }, 1);
+            my $contents = $t->get('1.0', 'end');
+            $contents =~ s/\n/\r\n/g;
+            $SIG{'INT'} = sub { print "thread catch INT\n"; threads->exit(); };
+            $thread = threads->create(
+                                { 'context'  => 'list',
+                                'stack_size' => 32*4096,
+                                'exit'       => 'thread_only' },
+                                $self->{'servercmd'}, $contents);
+            #$thread->detach();
+            return;
         }
     )->grid( -row => 4, -column => 2, -padx => 15, -pady => 15 );
     $self->{'mw'}
-      ->Button( -text => decode_utf8("停止"), -command => sub { $self->{'stopcmd'}; } )
+      ->Button( -text => decode_utf8("停止"), -command => sub {
+          #threads->set_thread_exit_only(1);
+          $thread->kill('INT');
+          #threads->exit() if (defined $thread) ;
+      } )
       ->grid( -row => 4, -column => 3, -padx => 15, -pady => 15 );
 
     $self->{'mw'}
@@ -158,6 +169,10 @@ sub _server {
 
 # 後処理
 sub _exit {
+    print "_exit: " . $thread . "\n";
+    if (defined $thread) {
+        threads->exit() if threads->can('exit');
+    }
     exit( $stathash{'EX_OK'} );
 }
 

@@ -130,10 +130,15 @@ my $soc = undef;
 my $acc = undef;
 
 # シグナル
-$SIG{'INT'} = sub {
+sub sig_handler {
+    print "catch INT\n";
+    close $soc if ( defined $soc );
     close $acc if ( defined $acc );
     close $out if ( defined $out );
-};
+    $soc = $acc = $out = undef;
+}
+
+$SIG{'INT'} = \&sig_handler;
 
 my $ourip             = "\0\0\0\0";
 my $sockaddr_template = 'S n a4 x8';
@@ -187,6 +192,7 @@ sub server {
         select($acc);
         $| = 1;
         select(STDOUT);
+        last if ($!{EINTR});
 
         my ( $af, $client_port, $client_ip ) =
           unpack( $sockaddr_template, $addr );
@@ -244,13 +250,21 @@ sub server_stop {
 
 my $data .= $send_header . "\n\n" . $send_body;
 
+sub server_loop {
+    my $response = shift || $data;
+    $SIG{'INT'} = sub { print "thread INT\n"; threads->exit(); };
+    sock_bind( $opt{'port'} );
+    $data =~ s/\n/\r\n/g;
+    server( $response );
+}
+
 sub window {
     $win = Tk::HttpServer->new(
         'address'   => $addr,
         'port'      => \$opt{'port'},
         'data'      => $data,
         'sockcmd'   => \&sock_bind,
-        'servercmd' => \&server,
+        'servercmd' => \&server_loop,
         'stopcmd'   => \&server_stop
     );
 
