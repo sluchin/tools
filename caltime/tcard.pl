@@ -177,7 +177,8 @@ my $key_pw = "Ms4u0TUahPTPM";
 
 # パスワード複合化
 sub decrypt_pw {
-    my $ciphertext = shift;
+    my $ciphertext = shift || '';
+    return undef if ($ciphertext eq '');
     my $key        = pack( "H16", $key_pw );
     my $cipher     = Crypt::Blowfish->new($key);
     my $plaintext  = $cipher->decrypt( pack( "H16", $ciphertext ) );
@@ -186,7 +187,8 @@ sub decrypt_pw {
 
 # パスワード暗号化
 sub encrypt_pw {
-    my $plaintext  = shift;
+    my $plaintext  = shift || '';
+    return undef if ($plaintext eq '');
     my $key        = pack( "H16", $key_pw );
     my $cipher     = Crypt::Blowfish->new($key);
     my $ciphertext = $cipher->encrypt($plaintext);
@@ -215,7 +217,7 @@ sub save_config {
     my $hash = {
         'dir'    => $opt{'dir'},
         'user'   => $opt{'id'},
-        'passwd' => encrypt_pw( $opt{'pw'} ),
+        'passwd' => encrypt_pw( $opt{'pw'} ) || '',
     };
     open my $cf, ">", $configfile
       or $log->error( "open[$configfile]:", $! );
