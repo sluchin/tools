@@ -57,6 +57,7 @@ sub init {
     my $self = shift;
     my %args = (
         'soc'    => undef,
+        'port'   => undef,
         'ssl'    => 0,
         'fd'     => undef,
         'vorbis' => 0,
@@ -64,6 +65,7 @@ sub init {
     );
 
     $self->{'soc'}    = $args{'soc'};
+    $self->{'port'}   = $args{'port'};
     $self->{'ssl'}    = $args{'ssl'};
     $self->{'fd'}     = $args{'fd'};
     $self->{'vorbis'} = $args{'vorbis'};
@@ -71,7 +73,39 @@ sub init {
 
 =head1 METHODS
 
-=head2 window
+=head1 METHODS
+
+=head2 get_localip
+
+IP取得
+
+=cut
+
+sub get_localip {
+    my $self = shift;
+    my $soc  = undef;
+
+    print $self->{'port'} || '' . "\n";
+    socket( $soc, PF_INET, SOCK_DGRAM, 0 );
+
+   #my $host_addr = pack_sockaddr_in($self->{'port'}, inet_aton("192.168.0.1"));
+    $self->{'port'} = getservbyname( $self->{'port'}, 'tcp' )
+      unless $self->{'port'} =~ /^\d+$/;
+    my $ipaddr = gethostbyname("192.168.0.1");
+    my $dest_params = sockaddr_in( $self->{'port'}, $ipaddr );
+    connect( $soc, $dest_params );
+    my @sock_addr = unpack_sockaddr_in( getsockname($soc) );
+    my $localip   = inet_ntoa( $sock_addr[1] );
+
+    #print "ip: $localip￥n";
+    print "test1\n";
+    close($soc) if ( defined $soc );
+    $soc = undef;
+    print "test2\n";
+    return $localip;
+}
+
+=head2 read_header
 
 ヘッダ受信
 
@@ -85,17 +119,21 @@ sub read_header {
 
     while (1) {
         $len = 0;
-        ( $len, $buf ) = _read($self, $self->{'soc'});
+        ( $len, $buf ) = _read( $self, $self->{'soc'} );
         printf "\nHeader: %d bytes read.\n", ( $len || 0 );
         print "len=" . $len . "\n" if ( $self->{'vorbis'} );
         $read_buffer .= $buf || '';
         last if ( !$len );
         $rlen += $len;
+        if ( $read_buffer =~ m/^EOF/ ) {
+            print "read_buffer match EOF\n";
+            return ();
+        }
         ( $read_buffer =~ m/\r\n\r\n/ ) and last;
     }
     print "*****\n" . $read_buffer . "\n" if ( $self->{'vorbis'} );
     print "rlen=" . ( $rlen || 0 ) . "\n";
-    ( $read_buffer =~ m/\r\n\r\n/ ) or return {};
+    ( $read_buffer =~ m/\r\n\r\n/ ) or return ();
 
     # ヘッダ長を取得
     my @header = split m/\r\n\r\n/, $read_buffer;    # ヘッダ分割
@@ -105,28 +143,30 @@ sub read_header {
     $rlen -= $hlen;
 
     # シーケンス番号とコンテンツ長取得
-    my @lines          = split m/\r\n/, $header[0];
     my $sequence_no    = 0;
     my $content_length = 0;
-    foreach my $line (@lines) {
-        if ( $line =~ m/^SequenceNo/i ) {
-            $sequence_no = $line;
-            $sequence_no =~ s/SequenceNo:\s*(.*)/$1/i;
+    if ( defined $header[0] ) {
+        my @lines = split m/\r\n/, $header[0];
+        foreach my $line (@lines) {
+            if ( $line =~ m/^SequenceNo/i ) {
+                $sequence_no = $line;
+                $sequence_no =~ s/SequenceNo:\s*(.*)/$1/i;
+            }
+            elsif ( $line =~ m/^Content-Length/i ) {
+                $content_length = $line;
+                $content_length =~ s/Content-Length:\s*(.*)/$1/i;
+            }
+            $line =~ m/^$/ and last;
         }
-        elsif ( $line =~ m/^Content-Length/i ) {
-            $content_length = $line;
-            $content_length =~ s/Content-Length:\s*(.*)/$1/i;
-        }
-        $line =~ m/^$/ and last;
     }
     print "SequenceNo[" .     ( $sequence_no    || 0 ) . "]\n";
     print "Content-Length[" . ( $content_length || 0 ) . "]\n";
 
     my $left = $content_length - $rlen;
-    print { $self->{'fd'} } $read_buffer;
+    print { $self->{'fd'} } $read_buffer if ( defined $self->{'fd'} );
 
     return (
-        'left'        => ( $left || 0 ),
+        'left'        => ( $left        || 0 ),
         'buffer'      => ( $read_buffer || '' ),
         'sequence_no' => ( $sequence_no || 0 )
     );
@@ -150,17 +190,17 @@ sub read_body {
     my $read_buffer;
     while ( $left > 0 ) {
         $len = 0;
-        ( $len, $read_buffer ) = _read($self, $self->{'soc'});
+        ( $len, $read_buffer ) = _read( $self, $self->{'soc'} );
         printf "\nBody: %d bytes read.\n", ( $len || 0 );
         last if ( !$len );
 
-        print { $self->{'fd'} } $read_buffer;
+        print { $self->{'fd'} } $read_buffer if ( defined $self->{'fd'} );
         $left -= $len;
         $rlen += $len;
     }
     return (
-        'len'    => ( $rlen || 0 ),
-        'buffer' => ( $read_buffer ||'' )
+        'len'    => ( $rlen        || 0 ),
+        'buffer' => ( $read_buffer || '' )
     );
 }
 
@@ -182,14 +222,42 @@ sub write_msg {
 
     # 送信メッセージ
     my $msg =
-         $header . "\r\nSequenceNo: " . ( $args{'sequence_no'} || '0' )
-       . "\r\nContent-Length: " . ( ( bytes::length($body) ) || '0' )
-       . "\r\nDate: " . ( datetime() || '' )
-       . "\r\n" . "Server: test-server\r\n\r\n"
-       . $body;
+        $header
+      . "\r\nSequenceNo: "
+      . ( $args{'sequence_no'} || '0' )
+      . "\r\nContent-Length: "
+      . ( ( bytes::length($body) ) || '0' )
+      . "\r\nDate: "
+      . ( datetime() || '' ) . "\r\n"
+      . "Server: test-server\r\n\r\n"
+      . ( $body || '' );
 
     # 送信
-    my $len = _write($self, $self->{'soc'}, $msg);
+    my $len = _write( $self, $self->{'soc'}, $msg );
+    printf "\n%d bytes write.\n", $len || 0;
+
+    return (
+        'len'    => ( $len || 0 ),
+        'buffer' => ( $msg || '' )
+    );
+}
+
+=head2 write_msg
+
+送信
+
+=cut
+
+sub write_eof {
+    my $self = shift;
+
+    print "write_eof: $!\n" if ( $self->{'vorbis'} );
+
+    # 送信メッセージ
+    my $msg = "EOF";
+
+    # 送信
+    my $len = _write( $self, $self->{'soc'}, $msg );
     printf "\n%d bytes write.\n", $len || 0;
 
     return (
@@ -205,6 +273,7 @@ sub write_msg {
 =cut
 
 sub datetime {
+    my $self = shift;
     my $string = shift || '';
     my ( $sec, $min, $hour, $mday, $mon, $year ) = localtime(time);
     my $datetime = sprintf(
@@ -221,22 +290,23 @@ sub _read {
     my $self = shift;
     my $soc  = shift;
 
-    print "soc: $soc\n" if ($self->{'vorbis'});
+    print "soc: $soc\n" if ( $self->{'vorbis'} );
     my $buf = '';
     if ( $self->{'ssl'} ) {
         $buf = Net::SSLeay::read( $soc, 16384 );
         die_if_ssl_error("ssl read");
     }
     else {
+
         #read( $soc, $buf, 12 );
         #recv( $soc, $buf, 12, MSG_WAITALL);
         $buf = <$soc> || '';
     }
     my $len = bytes::length( $buf || '' ) || 0;
-    print "len: $len\n" if ($self->{'vorbis'});
+    print "len: $len\n" if ( $self->{'vorbis'} );
     die "read error: $!\n"
-      if (!$len
-          && (!$!{EAGAIN} && !$!{EINTR} && !$!{ENOBUFS} && $! ) );
+      if ( !$len
+        && ( !$!{EAGAIN} && !$!{EINTR} && !$!{ENOBUFS} && $! ) );
     return ( $len, $buf );
 }
 
@@ -246,13 +316,13 @@ sub _write {
     my $soc  = shift;
     my $msg  = shift;
 
-    print "soc: $soc\n" if ($self->{'vorbis'});
+    print "soc: $soc\n" if ( $self->{'vorbis'} );
     if ( $self->{'ssl'} ) {
         Net::SSLeay::write( $soc, $msg ) or die "write: $!";
         die_if_ssl_error("ssl write");
     }
     else {
-        send($soc, $msg, 0);
+        send( $soc, $msg, 0 );
     }
     my $len = bytes::length( $msg || '' ) || 0;
     die "write error: $!\n"

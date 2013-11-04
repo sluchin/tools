@@ -37,7 +37,9 @@ use strict;
 use warnings;
 use Encode qw/decode_utf8/;
 use File::Basename qw/dirname/;
+use Socket;
 use Tk;
+
 #use threads;
 #use Thread::Queue;
 
@@ -59,8 +61,9 @@ sub new {
 sub init {
     my $self = shift;
     my %args = (
-        'address'   => '',
         'port'      => '',
+        'ssl'       => 0,
+        'vorbis'    => 0,
         'data'      => '',
         'sockcmd'   => undef,
         'servercmd' => undef,
@@ -68,8 +71,9 @@ sub init {
         @_
     );
 
-    $self->{'address'}   = $args{'address'};
     $self->{'port'}      = $args{'port'};
+    $self->{'ssl'}       = $args{'ssl'};
+    $self->{'vorbis'}    = $args{'vorbis'};
     $self->{'data'}      = $args{'data'};
     $self->{'sockcmd'}   = $args{'sockcmd'};
     $self->{'servercmd'} = $args{'servercmd'};
@@ -93,7 +97,7 @@ sub create_window {
     );
     my $mw;
     $mw = MainWindow->new();
-    $mw->protocol( 'WM_DELETE_WINDOW', [\&_exit, $mw] );
+    $mw->protocol( 'WM_DELETE_WINDOW', [ \&_exit, $mw ] );
     $mw->title(
         decode_utf8("HTTPサーバ") . "  [v" . $args{'version'} . "]" );
     $mw->geometry("500x500");
@@ -105,7 +109,7 @@ sub create_window {
     }
     $self->{'mw'} = $mw;
 
-    _server( $self );
+    _server($self);
 
     MainLoop();
 }
@@ -113,11 +117,9 @@ sub create_window {
 my $pid;
 my $thread = undef;
 my $contents;
+
 sub _server {
     my $self = shift;
-
-    my $sockcmd   = $self->{'sockcmd'};
-    my $servercmd = $self->{'servercmd'};
 
     # $self->{'mw'}->Label( -text => decode_utf8("アドレス: ") )
     #   ->grid( -row => 1, -column => 1, -pady => 7 );
@@ -131,43 +133,61 @@ sub _server {
 
     $self->{'mw'}->Label( -text => decode_utf8("送信データ") )
       ->grid( -row => 3, -column => 1, -pady => 7 );
-    my $t = $self->{'mw'}->Scrolled('Text',
-                            -background => 'white',
-                            -width      => 40,
-                            -height     => 10,
-                            -wrap       => 'none',
-                            -scrollbars => 'se'
+    my $t = $self->{'mw'}->Scrolled(
+        'Text',
+        -background => 'white',
+        -width      => 40,
+        -height     => 10,
+        -wrap       => 'none',
+        -scrollbars => 'se'
     )->grid( -row => 3, -column => 2, -columnspan => 2, -pady => 7 );
 
-    $t->insert('1.0', $self->{'data'});
+    $t->insert( '1.0', $self->{'data'} );
 
     $self->{'mw'}->Button(
         -text    => decode_utf8("起動"),
         -command => sub {
-            $contents = $t->get('1.0', 'end');
+            $contents = $t->get( '1.0', 'end' );
             $contents =~ s/\n/\r\n/g;
-            $SIG{'INT'} = $self->{'stopcmd'};
+
+      #$SIG{'INT'} = sub { $self->{'stopcmd'} if (defined $self->{'stopcmd'}) };
             $pid = fork();
-            if (!$pid) {
+            if ( !$pid ) {
                 print "parent\n";
                 sleep 1;
-            } else {
+            }
+            else {
                 print "child\n";
-                $self->{'sockcmd'}->($self->{'port'});
-                $self->{'servercmd'}->($contents);
+                if ( defined $self->{'sockcmd'} ) {
+                    $self->{'sockcmd'}->(
+                        'port'   => $self->{'port'},
+                        'ssl'    => $self->{'ssl'},
+                        'vorbis' => $self->{'vorbis'}
+                    );
+                    $self->{'servercmd'}->(
+                        'port'   => $self->{'port'},
+                        'ssl'    => $self->{'ssl'},
+                        'vorbis' => $self->{'vorbis'},
+                        'data'   => $contents
+                    ) if ( defined $self->{'servercmd'} );
+                }
                 exit(0);
             }
             return;
         }
     )->grid( -row => 4, -column => 2, -padx => 15, -pady => 15 );
-    $self->{'mw'}
-      ->Button( -text => decode_utf8("停止"), -command => sub {
-          #threads->set_thread_exit_only(1);
-          #$thread->kill('INT');
-          #threads->exit() if (defined $thread) ;
-          kill('INT', $pid);
-      } )
-      ->grid( -row => 4, -column => 3, -padx => 15, -pady => 15 );
+    $self->{'mw'}->Button(
+        -text    => decode_utf8("停止"),
+        -command => sub {
+
+            #kill('INT', $pid);
+            $self->{'stopcmd'}->(
+                'port'   => $self->{'port'},
+                'ssl'    => $self->{'ssl'},
+                'vorbis' => $self->{'vorbis'}
+            ) if ( defined $self->{'stopcmd'} );
+        }
+    )->grid( -row => 4, -column => 3, -padx => 15, -pady => 15 );
 
     $self->{'mw'}
       ->Button( -text => decode_utf8("終了"), -command => sub { _exit(); } )
@@ -178,8 +198,9 @@ sub _server {
 sub _exit {
     my $self = shift;
     print "_exit\n";
-    $self->{'mw'}->destroy;
-    #exit( $stathash{'EX_OK'} );
+
+    #$self->{'mw'}->destroy;
+    exit( $stathash{'EX_OK'} );
 }
 
 # sub sig_handle {
