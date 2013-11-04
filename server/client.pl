@@ -24,8 +24,11 @@
 
 use strict;
 use warnings;
-use File::Basename;
-use Getopt::Long;
+use File::Basename qw/basename dirname/;
+use File::Spec::Functions qw/catfile/;
+use Getopt::Long qw/GetOptions Configure/;
+
+#use Encode qw/encode decode decode_utf8/;
 use Socket;
 use bytes ();
 use Sys::Hostname;
@@ -43,6 +46,9 @@ BEGIN {
 }
 
 use Http;
+use Tk::HttpClient;
+
+my $iconfile = catfile( $progdir, "icon", "icon.xpm" );
 
 # ステータス
 my %stathash = (
@@ -58,6 +64,7 @@ my %opt = (
     'file'     => "client.log",
     'filelist' => '',
     'count'    => 1,
+    'nogui'    => 0,
     'vorbis'   => 0,
     'help'     => 0,
     'version'  => 0
@@ -65,7 +72,7 @@ my %opt = (
 
 # バージョン情報表示
 sub print_version {
-    print "$progname version "
+    print "$progname version " 
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
@@ -89,6 +96,7 @@ GetOptions(
     'file|f=s'     => \$opt{'file'},
     'filelist|l=s' => \$opt{'filelist'},
     'count|c=i'    => \$opt{'count'},
+    'nogui'        => \$opt{'nogui'},
     'vorbis|v'     => \$opt{'vorbis'},
     'help|h|?'     => \$opt{'help'},
     'version|V'    => \$opt{'version'}
@@ -101,101 +109,160 @@ print_version() if ( $opt{'version'} );
 
 # ヘッダ
 my $send_header =
-"POST /Hems/Storage/Mete HTTP/1.1\r\nConnection: close\r\nPragma: no-cache\r\nHost: "
+"POST /Hems/Storage/Mete HTTP/1.1\nConnection: close\nPragma: no-cache\nHost: "
   . ( hostname() || "" )
-  . "\r\nSequenceNo: 0\r\nHID: 11821000007\r\nContent-type: text/html; charset=utf-8";
+  . "\nSequenceNo: 0\nContent-type: text/html; charset=utf-8";
 
 # ボディ
-my $send_body =
-"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<cyclicDataRequest><softwareVersion>V2.01A</softwareVersion><configVersion>31</configVersion><status><SDInsert>0</SDInsert><SDMount>0</SDMount><WANLink>1</WANLink><LANLink>0</LANLink></status><measuredDataList><measuredData date=\"2013/08/03 00:00:00\"><AI id=\"1\">2147483647</AI><AI id=\"2\">2147483647</AI><AI id=\"3\">2147483647</AI><AI id=\"4\">2147483647</AI><AI id=\"5\">2147483647</AI><AI id=\"6\">2147483647</AI><PI id=\"1\">2147483647</PI><PI id=\"2\">2147483647</PI></measuredData><measuredData date=\"2013/08/03 00:01:00\"><AI id=\"1\">2147483647</AI><AI id=\"2\">2147483647</AI><AI id=\"3\">2147483647</AI><AI id=\"4\">2147483647</AI><AI id=\"5\">2147483647</AI><AI id=\"6\">2147483647</AI><PI id=\"1\">2147483647</PI><PI id=\"2\">2147483647</PI></measuredData><measuredData date=\"2013/08/03 00:02:00\">";
+my $send_body = "test";
 
-open my $out, ">>", "$opt{'file'}"
-  or die "open[$opt{'file'}]: $!";
-
+my $win = undef;
 my $soc = undef;
+my $out = undef;
 
 # シグナル
-$SIG{'INT'} = sub {
+sub sig_handler {
     close $soc if ( defined $soc );
     close $out if ( defined $out );
-};
-
-for ( my $i = 0 ; $i < $opt{'count'} ; $i++ ) {
-
-    if ( $opt{'ssl'} ) {
-        eval { use Net::SSLeay qw(die_now die_if_ssl_error); };
-        if ( !$@ ) {
-            print "Cannot use Net::SSLeay\nTry `cpan Net::SSLeay'\n";
-            exit( $stathash{'EX_NG'} );
-        }
-        Net::SSLeay::load_error_strings();
-        Net::SSLeay::SSLeay_add_ssl_algorithms();
-        Net::SSLeay::randomize();
-    }
-
-    $opt{'port'} = getservbyname( $opt{'port'}, 'tcp' )
-      unless $opt{'port'} =~ /^\d+$/;
-    my $ipaddr = gethostbyname( $opt{'dest'} );
-    my $dest_params = sockaddr_in( $opt{'port'}, $ipaddr );
-
-    socket( $soc, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
-      or die("socket: $!\n");
-    connect( $soc, $dest_params ) or die "connect: $!";
-    select($soc);
-    $| = 1;
-    select(STDOUT);
-
-    my $ctx;
-    if ( $opt{'ssl'} ) {
-        my $ctx = Net::SSLeay::CTX_new()
-          or die_now("Failed to create SSL_CTX $!");
-        Net::SSLeay::CTX_set_options( $ctx, &Net::SSLeay::OP_ALL )
-          and die_if_ssl_error("ssl ctx set options");
-        $soc = Net::SSLeay::new($ctx) or die_now("Failed to create SSL $!");
-        Net::SSLeay::set_fd( $soc, fileno($soc) );
-        my $res = Net::SSLeay::connect($soc)
-          and die_if_ssl_error("ssl connect");
-        print "Cipher `" . Net::SSLeay::get_cipher($soc) . "'\n";
-    }
-
-    my $http = Http->new(
-        'soc'    => $soc,
-        'ssl'    => $opt{'ssl'},
-        'fd'     => $out,
-        'vorbis' => $opt{'vorbis'}
-    );
-
-    # 送信
-    my $msg .= $send_header . "\r\n\r\n" . $send_body;
-    my %res = $http->write_msg(
-        'sequence_no' => 0,
-        'msg'         => $msg
-    );
-    CORE::shutdown $soc, 1;
-    print $res{'buffer'} . "\n";
-
-    # ヘッダ受信
-    print $out $http->datetime("Started.") . "\n";
-    my %header = $http->read_header();
-
-    print $header{'left'}   || '' . "\n";
-    print $header{'buffer'} || '' . "\n";
-
-    # ボディ受信
-    my %body = $http->read_body( 'left' => $header{'left'} );
-    print $body{'buffer'} || '' . "\n";
-    print $out "\n" . $http->datetime("Done.") . "\n";
-
-    if ( $opt{'ssl'} ) {
-        Net::SSLeay::free($soc);
-        Net::SSLeay::CTX_free($ctx);
-    }
-
-    close $soc and print "close $soc\n";
+    $soc = $out = undef;
 }
 
-close $out if ( defined $out );
-$out = undef;
+$SIG{'INT'} = \&sig_handler;
+
+sub http_client {
+    my %args = (
+        'dest'   => '',
+        'port'   => 80,
+        'ssl'    => 0,
+        'count'  => 1,
+        'vorbis' => 0,
+        'msg'    => '',
+        @_
+    );
+
+    open $out, ">>", "$opt{'file'}"
+      or die "open[$opt{'file'}]: $!";
+
+    for ( my $i = 0 ; $i < $args{'count'} ; $i++ ) {
+
+        if ( $args{'ssl'} ) {
+            eval { use Net::SSLeay qw(die_now die_if_ssl_error); };
+            if ( !$@ ) {
+                print "Cannot use Net::SSLeay\nTry `cpan Net::SSLeay'\n";
+                exit( $stathash{'EX_NG'} );
+            }
+            Net::SSLeay::load_error_strings();
+            Net::SSLeay::SSLeay_add_ssl_algorithms();
+            Net::SSLeay::randomize();
+        }
+
+        print "port: " . ( $args{'port'} || '' ) . "\n";
+        $args{'port'} = getservbyname( $args{'port'}, 'tcp' )
+          unless $args{'port'} =~ /^\d+$/;
+        print "port: " . ( $args{'port'} || '' ) . "\n";
+
+        print "dest: " . ( $args{'dest'} || '' ) . "\n";
+        my $ipaddr = gethostbyname( $args{'dest'} );
+        print "ipaddr: " . ( $ipaddr || '' ) . "\n";
+
+        my $dest_params = sockaddr_in( $args{'port'}, $ipaddr )
+          or die "Cannot pack: $!";
+        print "dest_params: " . ( $dest_params || '' ) . "\n";
+
+        socket( $soc, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
+          or die("socket: $!\n");
+        connect( $soc, $dest_params ) or die "connect: $!";
+        select($soc);
+        $| = 1;
+        select(STDOUT);
+
+        my $ctx;
+        if ( $args{'ssl'} ) {
+            $ctx = Net::SSLeay::CTX_new()
+              or die_now("Failed to create SSL_CTX $!");
+            Net::SSLeay::CTX_set_options( $ctx, &Net::SSLeay::OP_ALL )
+              and die_if_ssl_error("ssl ctx set options");
+            $soc = Net::SSLeay::new($ctx) or die_now("Failed to create SSL $!");
+            Net::SSLeay::set_fd( $soc, fileno($soc) );
+            my $res = Net::SSLeay::connect($soc)
+              and die_if_ssl_error("ssl connect");
+            print "Cipher `" . Net::SSLeay::get_cipher($soc) . "'\n";
+        }
+
+        print "test2\n";
+        my $http = Http->new(
+            'soc'    => $soc,
+            'ssl'    => $args{'ssl'},
+            'fd'     => $out,
+            'vorbis' => $args{'vorbis'}
+        );
+
+        # 送信
+        my %res = $http->write_msg(
+            'sequence_no' => 0,
+            'msg'         => $args{'msg'}
+        );
+        CORE::shutdown $soc, 1;
+        print $res{'buffer'} . "\n";
+
+        # ヘッダ受信
+        print $out ( $http->datetime("Started.") || '' ) . "\n";
+        my %header = $http->read_header();
+
+        print $header{'left'}   || '' . "\n";
+        print $header{'buffer'} || '' . "\n";
+
+        # ボディ受信
+        my %body = $http->read_body( 'left' => $header{'left'} );
+        print $body{'buffer'} || '' . "\n";
+        print $out "\n" . ( $http->datetime("Done.") || '' ) . "\n";
+
+        if ( $args{'ssl'} ) {
+            Net::SSLeay::free($soc);
+            Net::SSLeay::CTX_free($ctx);
+        }
+
+        close $soc and print "close $soc\n";
+        $soc = undef;
+    }
+
+    close $out if ( defined $out );
+    $out = undef;
+}
+
+my $msg .= $send_header . "\n\n" . $send_body;
+
+sub window {
+    $win = Tk::HttpClient->new(
+        'dest'      => $opt{'dest'},
+        'port'      => $opt{'port'},
+        'ssl'       => $opt{'ssl'},
+        'count'     => $opt{'count'},
+        'vorbis'    => $opt{'vorbis'},
+        'msg'       => $msg,
+        'clientcmd' => \&http_client,
+    );
+
+    $win->create_window(
+        'iconfile' => $iconfile,
+        'version'  => $VERSION,
+    );
+}
+
+if ( $opt{'nogui'} ) {
+    $msg =~ s/\n/\r\n/g;
+    http_client(
+        'dest'   => $opt{'dest'},
+        'port'   => $opt{'port'},
+        'ssl'    => $opt{'ssl'},
+        'count'  => $opt{'count'},
+        'vorbis' => $opt{'vorbis'},
+        'msg'    => $msg,
+    );
+}
+else {
+    window();
+}
 
 exit( $stathash{'EX_OK'} );
 
@@ -217,5 +284,6 @@ client.pl [options]
    -l,  --filelist   Send filelist of data.
    -c,  --count      Repeat count.
    -v,  --vorbis     Display extra information.
+        --nogui      Command line interface.
    -h,  --help       Display this help and exit.
    -V,  --version    Output version information and exit.
