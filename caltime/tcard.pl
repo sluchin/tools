@@ -35,7 +35,7 @@ use YAML qw/LoadFile Dump/;
 use Crypt::Blowfish qw/encrypt decrypt/;
 use Log::Dispatch;
 
-our $VERSION = do { my @r = ( q$Revision: 0.05 $ =~ /\d+/g );
+our $VERSION = do { my @r = ( q$Revision: 0.06 $ =~ /\d+/g );
     sprintf "%d." . "%02d" x $#r, @r if (@r);
 };
 
@@ -178,17 +178,17 @@ my $key_pw = "Ms4u0TUahPTPM";
 # パスワード複合化
 sub decrypt_pw {
     my $ciphertext = shift || '';
-    return undef if ($ciphertext eq '');
-    my $key        = pack( "H16", $key_pw );
-    my $cipher     = Crypt::Blowfish->new($key);
-    my $plaintext  = $cipher->decrypt( pack( "H16", $ciphertext ) );
+    return undef if ( $ciphertext eq '' );
+    my $key       = pack( "H16", $key_pw );
+    my $cipher    = Crypt::Blowfish->new($key);
+    my $plaintext = $cipher->decrypt( pack( "H16", $ciphertext ) );
     return $plaintext;
 }
 
 # パスワード暗号化
 sub encrypt_pw {
-    my $plaintext  = shift || '';
-    return undef if ($plaintext eq '');
+    my $plaintext = shift || '';
+    return undef if ( $plaintext eq '' );
     my $key        = pack( "H16", $key_pw );
     my $cipher     = Crypt::Blowfish->new($key);
     my $ciphertext = $cipher->encrypt($plaintext);
