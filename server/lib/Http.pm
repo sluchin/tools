@@ -88,7 +88,6 @@ sub get_localip {
     print $self->{'port'} || '' . "\n";
     socket( $soc, PF_INET, SOCK_DGRAM, 0 );
 
-   #my $host_addr = pack_sockaddr_in($self->{'port'}, inet_aton("192.168.0.1"));
     $self->{'port'} = getservbyname( $self->{'port'}, 'tcp' )
       unless $self->{'port'} =~ /^\d+$/;
     my $ipaddr = gethostbyname("192.168.0.1");
@@ -97,11 +96,8 @@ sub get_localip {
     my @sock_addr = unpack_sockaddr_in( getsockname($soc) );
     my $localip   = inet_ntoa( $sock_addr[1] );
 
-    #print "ip: $localip￥n";
-    print "test1\n";
     close($soc) if ( defined $soc );
     $soc = undef;
-    print "test2\n";
     return $localip;
 }
 

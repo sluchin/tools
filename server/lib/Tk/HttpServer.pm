@@ -40,7 +40,8 @@ use File::Basename qw/dirname/;
 use Socket;
 use Tk;
 
-#use threads;
+use threads;
+
 #use Thread::Queue;
 
 # ステータス
@@ -61,7 +62,8 @@ sub new {
 sub init {
     my $self = shift;
     my %args = (
-        'port'      => '',
+        'ip'        => 'localhost',
+        'port'      => '80',
         'ssl'       => 0,
         'vorbis'    => 0,
         'data'      => '',
@@ -71,6 +73,7 @@ sub init {
         @_
     );
 
+    $self->{'ip'}        = $args{'ip'};
     $self->{'port'}      = $args{'port'};
     $self->{'ssl'}       = $args{'ssl'};
     $self->{'vorbis'}    = $args{'vorbis'};
@@ -115,25 +118,26 @@ sub create_window {
 }
 
 my $pid;
-my $thread = undef;
+my @threads;
 my $contents;
 
 sub _server {
     my $self = shift;
 
-    # $self->{'mw'}->Label( -text => decode_utf8("アドレス: ") )
-    #   ->grid( -row => 1, -column => 1, -pady => 7 );
-    # $self->{'mw'}->Label( -text => $self->{'address'} )
-    #   ->grid( -row => 1, -column => 2, -pady => 7 );
+    $self->{'mw'}->Label( -text => decode_utf8("アドレス: ") )
+      ->grid( -row => 1, -column => 1, -pady => 7 );
+    $self->{'mw'}->Label( -text => $self->{'ip'} )
+      ->grid( -row => 1, -column => 2, -pady => 7 );
 
     $self->{'mw'}->Label( -text => decode_utf8("ポート: ") )
       ->grid( -row => 2, -column => 1, -pady => 7 );
-    $self->{'mw'}->Entry( -textvariable => $self->{'port'}, -width => 12 )
+    my $entport =
+      $self->{'mw'}->Entry( -textvariable => $self->{'port'}, -width => 12 )
       ->grid( -row => 2, -column => 2, -pady => 7 );
 
     $self->{'mw'}->Label( -text => decode_utf8("送信データ") )
       ->grid( -row => 3, -column => 1, -pady => 7 );
-    my $t = $self->{'mw'}->Scrolled(
+    my $text = $self->{'mw'}->Scrolled(
         'Text',
         -background => 'white',
         -width      => 40,
@@ -142,46 +146,23 @@ sub _server {
         -scrollbars => 'se'
     )->grid( -row => 3, -column => 2, -columnspan => 2, -pady => 7 );
 
-    $t->insert( '1.0', $self->{'data'} );
+    $text->insert( '1.0', $self->{'data'} );
 
     $self->{'mw'}->Button(
         -text    => decode_utf8("起動"),
         -command => sub {
-            $contents = $t->get( '1.0', 'end' );
+            $contents = $text->get( '1.0', 'end' );
             $contents =~ s/\n/\r\n/g;
 
-      #$SIG{'INT'} = sub { $self->{'stopcmd'} if (defined $self->{'stopcmd'}) };
-            $pid = fork();
-            if ( !$pid ) {
-                print "parent\n";
-                sleep 1;
-            }
-            else {
-                print "child\n";
-                if ( defined $self->{'sockcmd'} ) {
-                    $self->{'sockcmd'}->(
-                        'port'   => $self->{'port'},
-                        'ssl'    => $self->{'ssl'},
-                        'vorbis' => $self->{'vorbis'}
-                    );
-                    $self->{'servercmd'}->(
-                        'port'   => $self->{'port'},
-                        'ssl'    => $self->{'ssl'},
-                        'vorbis' => $self->{'vorbis'},
-                        'data'   => $contents
-                    ) if ( defined $self->{'servercmd'} );
-                }
-                exit(0);
-            }
-            return;
+            my $thread = threads->new( \&_callback, $self, $entport->get );
+            push( @threads, $thread );
         }
     )->grid( -row => 4, -column => 2, -padx => 15, -pady => 15 );
     $self->{'mw'}->Button(
         -text    => decode_utf8("停止"),
         -command => sub {
-
-            #kill('INT', $pid);
             $self->{'stopcmd'}->(
+                'ip'     => $self->{'ip'},
                 'port'   => $self->{'port'},
                 'ssl'    => $self->{'ssl'},
                 'vorbis' => $self->{'vorbis'}
@@ -194,19 +175,36 @@ sub _server {
       ->grid( -row => 5, -column => 4, -padx => 15, -pady => 15 );
 }
 
+sub _callback {
+    my $self = shift;
+    my $port = shift;
+    if ( defined $self->{'sockcmd'} ) {
+        $self->{'sockcmd'}->(
+            'port'   => $port,
+            'ssl'    => $self->{'ssl'},
+            'vorbis' => $self->{'vorbis'}
+        );
+        $self->{'servercmd'}->(
+            'port'   => $port,
+            'ssl'    => $self->{'ssl'},
+            'vorbis' => $self->{'vorbis'},
+            'data'   => $contents,
+            'loop'   => 1
+        ) if ( defined $self->{'servercmd'} );
+    }
+}
+
 # 後処理
 sub _exit {
     my $self = shift;
     print "_exit\n";
 
-    #$self->{'mw'}->destroy;
+    # foreach(@threads){
+    #     my ($return) = $_->join;
+    #     print "$return closed\n";
+    # }
     exit( $stathash{'EX_OK'} );
 }
-
-# sub sig_handle {
-#     print "fork catch INT\n";
-#     exit( $stathash{'EX_OK'} );
-# }
 
 1;
 

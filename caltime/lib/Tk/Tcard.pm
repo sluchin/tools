@@ -201,43 +201,58 @@ sub _tab_setime {
     my $self = shift;
     my $tab  = shift;
 
-    my $tcardcmd = $self->{'tcardcmd'};
-    my $dlcmd    = $self->{'dlcmd'};
-    $tab->Label( -textvariable => ( \$self->{'stime'} || '' ) )
-      ->grid( -row => 1, -column => 2, -padx => 15, -pady => 15 );
-    $tab->Button(
-        -text    => decode_utf8("出社"),
-        -command => sub { $tcardcmd->("go") },
+    my $tcardcmd    = $self->{'tcardcmd'};
+    my $dlcmd       = $self->{'dlcmd'};
+    my $do_download = 1;
+
+    $tab->Checkbutton(
+        -text     => decode_utf8("ダウンロードする"),
+        -variable => \$do_download,
+        -onvalue  => 1
     )->grid( -row => 1, -column => 3, -padx => 15, -pady => 15 );
 
-    $tab->Label( -textvariable => ( \$self->{'etime'} || '' ) )
+    $tab->Label( -textvariable => ( \$self->{'stime'} || '' ) )
       ->grid( -row => 2, -column => 2, -padx => 15, -pady => 15 );
+    $tab->Button(
+        -text    => decode_utf8("出社"),
+        -command => sub {
+            $tcardcmd->("go");
+            if ($do_download) {
+                $dlcmd->( $self->{'entry'}, $self->{'date'} );
+            }
+        },
+    )->grid( -row => 2, -column => 3, -padx => 15, -pady => 15 );
+
+    $tab->Label( -textvariable => ( \$self->{'etime'} || '' ) )
+      ->grid( -row => 3, -column => 2, -padx => 15, -pady => 15 );
     my $entry;
     $tab->Button(
         -text    => decode_utf8("退社"),
         -command => sub {
             $tcardcmd->("leave");
-            $dlcmd->( $self->{'entry'}, $self->{'date'} );
+            if ($do_download) {
+                $dlcmd->( $self->{'entry'}, $self->{'date'} );
+            }
         },
-    )->grid( -row => 2, -column => 3, -padx => 15, -pady => 15 );
+    )->grid( -row => 3, -column => 3, -padx => 15, -pady => 15 );
 
     $tab->Label( -text => decode_utf8("日付: ") )
-      ->grid( -row => 3, -column => 1 );
+      ->grid( -row => 4, -column => 1 );
     $entry = $tab->DateEntry(
         -textvariable => $self->{'date'},
         -width        => 10,
         -parsecmd     => \&_parse,
         -formatcmd    => \&_format
     );
-    $entry->grid( -row => 3, -column => 2, -padx => 15, -pady => 15 );
+    $entry->grid( -row => 4, -column => 2, -padx => 15, -pady => 15 );
     $tab->Button(
         -text    => decode_utf8("ダウンロード"),
         -command => [ $dlcmd, $self->{'entry'}, $self->{'date'} ]
-    )->grid( -row => 3, -column => 3, -padx => 15, -pady => 15 );
+    )->grid( -row => 4, -column => 3, -padx => 15, -pady => 15 );
     $tab->Button(
         -text    => decode_utf8("終了"),
         -command => sub { _exit(); }
-    )->grid( -row => 4, -column => 4, -padx => 15, -pady => 15 );
+    )->grid( -row => 5, -column => 4, -padx => 15, -pady => 15 );
 }
 
 # 編集タブ
@@ -245,31 +260,39 @@ sub _tab_edit {
     my $self = shift;
     my $tab  = shift;
 
-    my $gettmcmd = $self->{'gettmcmd'};
-    my $editcmd  = $self->{'editcmd'};
-    my $old      = $self->{'old'};
-    my $new      = $self->{'new'};
+    my $gettmcmd    = $self->{'gettmcmd'};
+    my $editcmd     = $self->{'editcmd'};
+    my $dlcmd       = $self->{'dlcmd'};
+    my $old         = $self->{'old'};
+    my $new         = $self->{'new'};
+    my $do_download = 1;
+
+    $tab->Checkbutton(
+        -text     => decode_utf8("ダウンロードする"),
+        -variable => \$do_download,
+        -onvalue  => 1
+    )->grid( -row => 1, -column => 2, -padx => 5, -pady => 5 );
 
     $tab->Label( -text => decode_utf8("日付: ") )
-      ->grid( -row => 1, -column => 1, -pady => 5 );
+      ->grid( -row => 2, -column => 1, -pady => 5 );
     my $entry = $tab->DateEntry(
         -textvariable => $self->{'date'},
         -width        => 10,
         -parsecmd     => \&_parse,
         -formatcmd    => \&_format
     );
-    $entry->grid( -row => 1, -column => 2, -pady => 5 );
+    $entry->grid( -row => 2, -column => 2, -pady => 5 );
 
     $tab->Button(
         -text    => decode_utf8("読込"),
         -command => [ $gettmcmd, $entry, $old, $new ]
-    )->grid( -row => 1, -column => 3, -padx => 5, -pady => 5 );
+    )->grid( -row => 2, -column => 3, -padx => 5, -pady => 5 );
 
     $tab->Label( -text => decode_utf8("欠勤: ") )
-      ->grid( -row => 2, -column => 1, -pady => 7 );
+      ->grid( -row => 3, -column => 1, -pady => 7 );
     my $opt =
       $tab->Optionmenu( -textvariable => \$new->{'areason'}, -width => 10 )
-      ->grid( -row => 2, -column => 2, -pady => 7 );
+      ->grid( -row => 3, -column => 2, -pady => 7 );
     $opt->addOptions(
         decode_utf8("未選択"), decode_utf8("欠勤"),
         decode_utf8("慶弔"),    decode_utf8("有休"),
@@ -277,37 +300,42 @@ sub _tab_edit {
     );
 
     $tab->Label( -text => decode_utf8("出社: ") )
-      ->grid( -row => 3, -column => 1, -pady => 7 );
+      ->grid( -row => 4, -column => 1, -pady => 7 );
     $tab->Entry( -textvariable => \$new->{'stime'}, -width => 12 )
-      ->grid( -row => 3, -column => 2, -pady => 7 );
+      ->grid( -row => 4, -column => 2, -pady => 7 );
     $tab->Label( -text => decode_utf8("遅刻事由: ") )
-      ->grid( -row => 3, -column => 3, -padx => 5, -pady => 7 );
+      ->grid( -row => 4, -column => 3, -padx => 5, -pady => 7 );
     $tab->Entry( -textvariable => \$new->{'sreason'}, -width => 20 )
-      ->grid( -row => 3, -column => 4, -padx => 5, -pady => 7 );
+      ->grid( -row => 4, -column => 4, -padx => 5, -pady => 7 );
 
     $tab->Label( -text => decode_utf8("退社: ") )
-      ->grid( -row => 4, -column => 1, -pady => 7 );
+      ->grid( -row => 5, -column => 1, -pady => 7 );
     $tab->Entry( -textvariable => \$new->{'etime'}, -width => 12 )
-      ->grid( -row => 4, -column => 2, -pady => 7 );
+      ->grid( -row => 5, -column => 2, -pady => 7 );
     $tab->Label( -text => decode_utf8("早退事由: ") )
-      ->grid( -row => 4, -column => 3, -padx => 5, -pady => 7 );
+      ->grid( -row => 5, -column => 3, -padx => 5, -pady => 7 );
     $tab->Entry( -textvariable => \$new->{'ereason'}, -width => 20 )
-      ->grid( -row => 4, -column => 4, -pady => 7 );
+      ->grid( -row => 5, -column => 4, -pady => 7 );
 
     $tab->Label( -text => decode_utf8("備考: ") )
-      ->grid( -row => 5, -column => 1, -padx => 5, -pady => 10 );
+      ->grid( -row => 6, -column => 1, -padx => 5, -pady => 10 );
     $tab->Entry( -textvariable => \$new->{'note'}, -width => 45 )
-      ->grid( -row => 5, -column => 2, -columnspan => 3, -pady => 7 );
+      ->grid( -row => 6, -column => 2, -columnspan => 3, -pady => 7 );
 
     $tab->Button(
         -text    => decode_utf8("編集"),
-        -command => [ $editcmd, $entry, $self->{'date'}, $old, $new ]
-    )->grid( -row => 6, -column => 4, -pady => 10 );
+        -command => sub {
+            $editcmd->( $entry, $self->{'date'}, $old, $new );
+            if ($do_download) {
+                $dlcmd->( $self->{'entry'}, $self->{'date'} );
+            }
+        }
+    )->grid( -row => 7, -column => 3, -pady => 10 );
 
     $tab->Button(
         -text    => decode_utf8("終了"),
         -command => sub { _exit(); }
-    )->grid( -row => 7, -column => 5, -padx => 15, -pady => 15 );
+    )->grid( -row => 7, -column => 4, -padx => 15, -pady => 15 );
 }
 
 # 設定タブ
