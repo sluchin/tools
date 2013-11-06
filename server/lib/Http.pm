@@ -85,7 +85,6 @@ sub get_localip {
     my $self = shift;
     my $soc  = undef;
 
-    print $self->{'port'} || '' . "\n";
     socket( $soc, PF_INET, SOCK_DGRAM, 0 );
 
     $self->{'port'} = getservbyname( $self->{'port'}, 'tcp' )

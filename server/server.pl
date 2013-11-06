@@ -167,15 +167,17 @@ sub sock_bind {
     my $our_params =
       pack( $sockaddr_template, &PF_INET, $args{'port'}, $ourip );
     socket( $soc, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
-      or print "socket: $!\n";
+      or print "socket: $!\n" and return $stathash{'EX_NG'};
     setsockopt( $soc, SOL_SOCKET, SO_REUSEADDR, 1 )
-      or print "setsockopt: $!\n";
-    bind( $soc, $our_params ) or print "bind:   $!\n";
-    listen( $soc, SOMAXCONN ) or print "listen: $!\n";
+      or print "setsockopt: $!\n" and return $stathash{'EX_NG'};
+    bind( $soc, $our_params ) or print "bind:   $!\n" and return $stathash{'EX_NG'};
+    listen( $soc, SOMAXCONN ) or print "listen: $!\n" and return $stathash{'EX_NG'};
 
     if ( $args{'ssl'} ) {
-        die("no server.key") unless ( -f "server.key" );
-        die("no server.crt") unless ( -f "server.crt" );
+        unless (-f "server.key" || -f "server.crt") {
+            print "no server.key";
+            return $stathash{'EX_NG'};
+        }
         $ctx = Net::SSLeay::CTX_new() or die_now("CTX_new ($ctx): $!");
         Net::SSLeay::CTX_set_options( $ctx, &Net::SSLeay::OP_ALL )
           and die_if_ssl_error("ssl ctx set options");
@@ -187,6 +189,7 @@ sub sock_bind {
             &Net::SSLeay::FILETYPE_PEM );
         die_if_ssl_error("certificate");
     }
+    return( $stathash{'EX_OK'} );
 }
 
 sub http_server {
@@ -201,7 +204,7 @@ sub http_server {
 
     while ( $args{'loop'} ) {
         print "Accepting connections...\n";
-        $addr = accept( $acc, $soc ) or print "accept: $!";
+        $addr = accept( $acc, $soc ) or print "accept: $!" and next;
         select($acc);
         $| = 1;
         select(STDOUT);
@@ -293,8 +296,8 @@ sub write_eof {
     my $dest_params = sockaddr_in( $args{'port'}, $ipaddr );
 
     socket( $soc, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
-      or print "socket: $!\n";
-    connect( $soc, $dest_params ) or print "connect: $!\n";
+      or print "socket: $!\n" and return;
+    connect( $soc, $dest_params ) or print "connect: $!\n" and return;
     select($soc);
     $| = 1;
     select(STDOUT);
@@ -416,8 +419,13 @@ cpan Net::SSLeay
 
 create ssl key
 
+秘密鍵の作成
 openssl genrsa 2048 > server.key
+
+証明書署名要求の作成
 openssl req -new -key server.key > server.csr
+
+サーバ証明書の作成
 openssl x509 -days 3650 -req -signkey server.key < server.csr > server.crt
 
 =cut
