@@ -179,18 +179,20 @@ sub _callback {
     my $self = shift;
     my $port = shift;
     if ( defined $self->{'sockcmd'} ) {
-        $self->{'sockcmd'}->(
+        my $res = $self->{'sockcmd'}->(
             'port'   => $port,
             'ssl'    => $self->{'ssl'},
             'vorbis' => $self->{'vorbis'}
         );
-        $self->{'servercmd'}->(
-            'port'   => $port,
-            'ssl'    => $self->{'ssl'},
-            'vorbis' => $self->{'vorbis'},
-            'data'   => $contents,
-            'loop'   => 1
-        ) if ( defined $self->{'servercmd'} );
+        if (!$res && defined $self->{'servercmd'}) {
+            $self->{'servercmd'}->(
+                'port'   => $port,
+                'ssl'    => $self->{'ssl'},
+                'vorbis' => $self->{'vorbis'},
+                'data'   => $contents,
+                'loop'   => 1
+            );
+        }
     }
 }
 
