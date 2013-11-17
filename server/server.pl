@@ -28,6 +28,7 @@ use File::Basename qw/basename dirname/;
 use File::Spec::Functions qw/catfile/;
 use Getopt::Long qw/GetOptions Configure/;
 use Encode qw/encode decode decode_utf8/;
+use Sys::Hostname;
 use Socket;
 use bytes ();
 
@@ -170,11 +171,13 @@ sub sock_bind {
       or print "socket: $!\n" and return $stathash{'EX_NG'};
     setsockopt( $soc, SOL_SOCKET, SO_REUSEADDR, 1 )
       or print "setsockopt: $!\n" and return $stathash{'EX_NG'};
-    bind( $soc, $our_params ) or print "bind:   $!\n" and return $stathash{'EX_NG'};
-    listen( $soc, SOMAXCONN ) or print "listen: $!\n" and return $stathash{'EX_NG'};
+    bind( $soc, $our_params )
+      or print "bind:   $!\n" and return $stathash{'EX_NG'};
+    listen( $soc, SOMAXCONN )
+      or print "listen: $!\n" and return $stathash{'EX_NG'};
 
     if ( $args{'ssl'} ) {
-        unless (-f "server.key" || -f "server.crt") {
+        unless ( -f "server.key" || -f "server.crt" ) {
             print "no server.key";
             return $stathash{'EX_NG'};
         }
@@ -189,7 +192,7 @@ sub sock_bind {
             &Net::SSLeay::FILETYPE_PEM );
         die_if_ssl_error("certificate");
     }
-    return( $stathash{'EX_OK'} );
+    return ( $stathash{'EX_OK'} );
 }
 
 sub http_server {

@@ -176,7 +176,7 @@ sub work_state {
         $top->title( decode_utf8("就業状態") );
         $top->geometry("300x500");
         $top->resizable( 0, 0 );
-        my $rows  = $#workstate;
+        my $rows  = $#workstate + 1;
         my $table = $top->Table(
             -rows       => $rows,
             -columns    => 4,
@@ -193,6 +193,9 @@ sub work_state {
             $table->put( $row, 3, $work->[3] );
             $row++;
         }
+    }
+    else {
+        print "no Tk::Table\n";
     }
 }
 
