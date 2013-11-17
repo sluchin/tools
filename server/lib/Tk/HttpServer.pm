@@ -184,7 +184,7 @@ sub _callback {
             'ssl'    => $self->{'ssl'},
             'vorbis' => $self->{'vorbis'}
         );
-        if (!$res && defined $self->{'servercmd'}) {
+        if ( !$res && defined $self->{'servercmd'} ) {
             $self->{'servercmd'}->(
                 'port'   => $port,
                 'ssl'    => $self->{'ssl'},
@@ -201,10 +201,10 @@ sub _exit {
     my $self = shift;
     print "_exit\n";
 
-    # foreach(@threads){
-    #     my ($return) = $_->join;
-    #     print "$return closed\n";
-    # }
+    foreach (@threads) {
+        my ($return) = $_->join;
+        print "$return closed\n";
+    }
     exit( $stathash{'EX_OK'} );
 }
 

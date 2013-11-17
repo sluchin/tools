@@ -37,11 +37,15 @@ use strict;
 use warnings;
 use Encode qw/decode_utf8/;
 use File::Basename qw/dirname/;
+use File::Find;
 use Socket;
 use Tk;
+use Tk::NoteBook;
 
-#use threads;
+use threads;
+
 #use Thread::Queue;
+my @threads;
 
 # ステータス
 my %stathash = (
@@ -63,6 +67,7 @@ sub init {
     my %args = (
         'dest'      => '',
         'port'      => 80,
+        'dir'       => '',
         'ssl'       => 0,
         'count'     => 1,
         'vorbis'    => 0,
@@ -72,6 +77,7 @@ sub init {
     );
     $self->{'dest'}      = $args{'dest'};
     $self->{'port'}      = $args{'port'};
+    $self->{'dir'}       = $args{'dir'};
     $self->{'ssl'}       = $args{'ssl'};
     $self->{'count'}     = $args{'count'};
     $self->{'vorbis'}    = $args{'vorbis'};
@@ -109,69 +115,281 @@ sub create_window {
     }
     $self->{'mw'} = $mw;
 
-    _client($self);
+    my $book = $mw->NoteBook()->pack( -fill => 'both', -expand => 1 );
+
+    my $tab1 = $book->add( "Sheet 1", -label => decode_utf8("送信") );
+    my $tab2 = $book->add( "Sheet 2", -label => decode_utf8("ログ") );
+
+    _tab_client( $self, $tab1 );
+    _tab_log( $self, $tab2 );
 
     MainLoop();
 }
 
-sub _client {
-    my $self = shift;
+=head2 window
 
-    $self->{'mw'}->Label( -text => decode_utf8("アドレス: ") )
+メッセージボックス生成
+
+=cut
+
+sub messagebox {
+    my ( $self, $level, $mes ) = @_;
+    if ( Exists( $self->{'mw'} ) ) {
+        my $mw = $self->{'mw'};
+        $mw->messageBox(
+            -type    => 'Ok',
+            -icon    => 'error',
+            -title   => decode_utf8("エラー"),
+            -message => $mes || ''
+        ) if ( lc $level eq 'error' );
+        $mw->messageBox(
+            -type    => 'Ok',
+            -icon    => 'warning',
+            -title   => decode_utf8("警告"),
+            -message => $mes || ''
+        ) if ( lc $level eq 'warning' );
+    }
+}
+
+# 送信タブ
+sub _tab_client {
+    my $self = shift;
+    my $tab  = shift;
+    my %filelist;
+
+    # IPアドレス
+    $tab->Label( -text => decode_utf8("アドレス: ") )
       ->grid( -row => 1, -column => 1, -pady => 7 );
     my $entdest =
-      $self->{'mw'}->Entry( -textvariable => $self->{'dest'}, -width => 12 )
+      $tab->Entry( -textvariable => $self->{'dest'}, -width => 12 )
       ->grid( -row => 1, -column => 2, -pady => 7 );
 
-    $self->{'mw'}->Label( -text => decode_utf8("ポート: ") )
+    # ポート
+    $tab->Label( -text => decode_utf8("ポート: ") )
       ->grid( -row => 2, -column => 1, -pady => 7 );
     my $entport =
-      $self->{'mw'}->Entry( -textvariable => $self->{'port'}, -width => 12 )
+      $tab->Entry( -textvariable => $self->{'port'}, -width => 12 )
       ->grid( -row => 2, -column => 2, -pady => 7 );
 
-    $self->{'mw'}->Label( -text => decode_utf8("送信データ: ") )
+    # データ
+    $tab->Label( -text => decode_utf8("送信データ: ") )
       ->grid( -row => 3, -column => 1, -pady => 7 );
-    my $text = $self->{'mw'}->Scrolled(
+    my $text = $tab->Scrolled(
         'Text',
         -background => 'white',
         -width      => 40,
         -height     => 10,
         -wrap       => 'none',
         -scrollbars => 'se'
-    )->grid( -row => 3, -column => 2, -columnspan => 2, -pady => 7 );
+    )->grid( -row => 3, -column => 2, -columnspan => 3, -pady => 7 );
 
     $text->insert( '1.0', $self->{'msg'} );
 
-    $self->{'mw'}->Button(
+    # ディレクトリ
+    $tab->Label( -text => decode_utf8("ディレクトリ: ") )
+      ->grid( -row => 4, -column => 1, -pady => 7 );
+    my $entdir =
+      $tab->Entry( -textvariable => $self->{'dir'}, -width => 30 )
+      ->grid( -row => 4, -column => 2, -columnspan => 2, -pady => 7 );
+
+    $tab->Button(
+        -text    => decode_utf8("選択"),
+        -command => [ \&_dir_dialog, $tab, $entdir ]
+    )->grid( -row => 4, -column => 4, -pady => 10 );
+
+    # 読込ボタン
+    my $table;
+    $tab->Button(
+        -text    => decode_utf8("読込"),
+        -command => sub {
+            _table_files( $self, $tab, $entdir->get, \%filelist );
+        }
+    )->grid( -row => 5, -column => 3, -padx => 15, -pady => 15 );
+
+    # 送信ボタン
+    $tab->Button(
         -text    => decode_utf8("送信"),
         -command => sub {
-            my $contents = $text->get( '1.0', 'end' ) || '';
-            $contents =~ s/\n/\r\n/g;
-            if ( defined $self->{'clientcmd'} ) {
-                $self->{'clientcmd'}->(
-                    'dest' => $entdest->get || '',
-                    'port' => $entport->get || '',
-                    'ssl'  => $self->{'ssl'},
-                    'count'  => $self->{'count'},
-                    'vorbis' => $self->{'vorbis'},
-                    'msg'    => $contents
-                );
-            }
-            else {
-                print "no cmd \n";
+            my $thread =
+              threads->new( \&_callback, $self, $entdest->get, $entport->get,
+                $text->get( '1.0', 'end' ), %filelist );
+            push( @threads, $thread );
+        }
+    )->grid( -row => 5, -column => 4, -padx => 15, -pady => 15 );
+
+    # 終了ボタン
+    $tab->Button(
+        -text    => decode_utf8("終了"),
+        -command => sub { _exit(); }
+    )->grid( -row => 6, -column => 5, -padx => 15, -pady => 15 );
+}
+
+# ログタブ
+sub _tab_log {
+    my $self = shift;
+    my $tab  = shift;
+
+    # 終了ボタン
+    $tab->Button(
+        -text    => decode_utf8("終了"),
+        -command => sub { _exit(); }
+    )->grid( -row => 7, -column => 5, -padx => 15, -pady => 15 );
+}
+
+# ファイルテーブル
+sub _table_files {
+    my $self     = shift;
+    my $top      = shift;
+    my $parent   = shift || '';
+    my $filelist = shift;
+
+    eval { use Tk::Table; };
+    if ( !$@ ) {
+        my @dirs = _recursive_dir($parent);
+        my $rows = $#dirs + 1;
+        my $sub  = $top->Toplevel();          #MainWindow->new();
+        $sub->protocol( 'WM_DELETE_WINDOW',
+            [ \&_exit_table, $sub, $filelist ] );
+        $sub->title( decode_utf8("ファイル") );
+        $sub->geometry("300x500");
+        $sub->resizable( 0, 0 );
+        my $table = $sub->Table(
+            -rows         => $rows,
+            -columns      => 2,
+            -scrollbars   => 'se',
+            -fixedrows    => 1,
+            -fixedcolumns => 1,
+            -takefocus    => 1
+        )->pack();
+        my $row = 0;
+
+        for my $dir (@dirs) {
+            print "$dir\n";
+            my $widget;
+            my $value;
+            $$widget = $table->Checkbutton(
+                -text     => "",
+                -onvalue  => $dir,
+                -offvalue => '',
+                -variable => \$value,
+                -command  => sub {
+                    if ($value) {
+                        $filelist->{$value} = 1;
+                    }
+                    else {
+                        delete( $filelist->{$value} );
+                    }
+                }
+            );
+            $table->put( $row, 0, $$widget );
+            $table->put( $row, 1, $dir );
+            $row++;
+        }
+    }
+    else {
+        print "no Tk::Table\n";
+    }
+}
+
+# テーブル終了
+sub _exit_table {
+    my $sub      = shift;
+    my $filelist = shift;
+    print "_exit_table\n";
+    $filelist = ();
+    $sub->destroy();
+}
+
+# コールバック
+sub _callback {
+    my $self     = shift;
+    my $dest     = shift;
+    my $port     = shift;
+    my $text     = shift;
+    my %filelist = @_;
+    my $contents;
+    if (%filelist) {
+        foreach my $key ( keys(%filelist) ) {
+            if ( -f $key ) {
+                open my $in, "<", "$key"
+                  or print "open error: $!";
+
+                while ( defined( my $line = <$in> ) ) {
+                    $contents .= $line;
+                }
+                $contents =~ s/\n/\r\n/g;
+                if ( defined $self->{'clientcmd'} ) {
+                    $self->{'clientcmd'}->(
+                        'dest'   => $dest,
+                        'port'   => $port,
+                        'ssl'    => $self->{'ssl'},
+                        'count'  => $self->{'count'},
+                        'vorbis' => $self->{'vorbis'},
+                        'msg'    => $contents
+                    );
+                }
+                else {
+                    print "no cmd\n";
+                }
+                close $in if ( defined $in );
             }
         }
-    )->grid( -row => 4, -column => 3, -padx => 15, -pady => 15 );
+    }
+    else {
+        $contents = $text;
+        $contents =~ s/\n/\r\n/g;
+        if ( defined $self->{'clientcmd'} ) {
+            $self->{'clientcmd'}->(
+                'dest'   => $dest,
+                'port'   => $port,
+                'ssl'    => $self->{'ssl'},
+                'count'  => $self->{'count'},
+                'vorbis' => $self->{'vorbis'},
+                'msg'    => $contents
+            );
+        }
+        else {
+            print "no cmd\n";
+        }
+    }
+}
 
-    $self->{'mw'}
-      ->Button( -text => decode_utf8("終了"), -command => sub { _exit(); } )
-      ->grid( -row => 5, -column => 4, -padx => 15, -pady => 15 );
+# ディレクトリ選択
+sub _dir_dialog {
+    my ( $tab, $ent ) = @_;
+    my $dir =
+      $tab->chooseDirectory( -title => decode_utf8("ディレクトリ") );
+    if ( defined $dir && $dir ne '' ) {
+        $ent->delete( 0, 'end' );
+        $ent->insert( 0, $dir );
+        $ent->xview('end');
+    }
+}
+
+# ディレクトリ配下のファイルをリスト化
+sub _recursive_dir {
+    my $dir    = shift;
+    my @result = ();
+
+    find sub {
+        my $file = $_;
+        my $path = $File::Find::name;
+        push( @result, $path ) if ( -f $path );
+    }, $dir;
+
+    return @result;
 }
 
 # 後処理
 sub _exit {
-    my $self = shift;
-    print "_exit\n";
+    my $mw = shift;
+
+    #$mw->destroy();
+    #kill(&SIGKILL, $$);
+    foreach (@threads) {
+        my ($return) = $_->join;
+        print "$return closed\n";
+    }
     exit( $stathash{'EX_OK'} );
 }
 

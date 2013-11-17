@@ -37,6 +37,7 @@ use strict;
 use warnings;
 use Socket;
 use bytes ();
+use Sys::Hostname qw/hostname/;
 
 # ステータス
 my %stathash = (
@@ -115,7 +116,7 @@ sub read_header {
     while (1) {
         $len = 0;
         ( $len, $buf ) = _read( $self, $self->{'soc'} );
-        printf "\nHeader: %d bytes read.\n", ( $len || 0 );
+
         print "len=" . $len . "\n" if ( $self->{'vorbis'} );
         $read_buffer .= $buf || '';
         last if ( !$len );
@@ -126,8 +127,8 @@ sub read_header {
         }
         ( $read_buffer =~ m/\r\n\r\n/ ) and last;
     }
+    printf "\nHeader: %d bytes read.\n", ( $rlen || 0 );
     print "*****\n" . $read_buffer . "\n" if ( $self->{'vorbis'} );
-    print "rlen=" . ( $rlen || 0 ) . "\n";
     ( $read_buffer =~ m/\r\n\r\n/ ) or return ();
 
     # ヘッダ長を取得
@@ -224,7 +225,9 @@ sub write_msg {
       . ( ( bytes::length($body) ) || '0' )
       . "\r\nDate: "
       . ( datetime() || '' ) . "\r\n"
-      . "Server: test-server\r\n\r\n"
+      . "Server: "
+      . ( hostname() || '' )
+      . "\r\n\r\n"
       . ( $body || '' );
 
     # 送信
@@ -237,7 +240,7 @@ sub write_msg {
     );
 }
 
-=head2 write_msg
+=head2 write_eof
 
 送信
 

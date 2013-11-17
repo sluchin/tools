@@ -324,7 +324,7 @@ sub read_file {
             $begin = $end = undef if ( $remarks =~ m/^\"no\"/ );
         }
 
-# 始業時刻のコメントの先頭に時刻フォーマットの文字列がある場合
+        # 始業時刻のコメントの先頭に時刻フォーマットの文字列がある場合
         if ( defined $comment ) {
             if ( $comment =~ m/^\"\d{2}:\d{2}\"/ )
             {    # 時刻からオフセット値を求める
