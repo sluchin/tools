@@ -38,6 +38,7 @@ use warnings;
 use Socket;
 use bytes ();
 use Sys::Hostname qw/hostname/;
+use File::Find;
 
 # ステータス
 my %stathash = (
@@ -61,6 +62,7 @@ sub init {
         'port'   => undef,
         'ssl'    => 0,
         'fd'     => undef,
+        'text'   => undef,
         'vorbis' => 0,
         @_
     );
@@ -69,6 +71,7 @@ sub init {
     $self->{'port'}   = $args{'port'};
     $self->{'ssl'}    = $args{'ssl'};
     $self->{'fd'}     = $args{'fd'};
+    $self->{'text'}   = $args{'text'};
     $self->{'vorbis'} = $args{'vorbis'};
 }
 
@@ -160,6 +163,9 @@ sub read_header {
 
     my $left = $content_length - $rlen;
     print { $self->{'fd'} } $read_buffer if ( defined $self->{'fd'} );
+    $self->{'text'}->insert( 'end', datetime( $self, "Started\n" ) )
+      if ( $self->{'text'} );
+    $self->{'text'}->insert( 'end', $read_buffer ) if ( $self->{'text'} );
 
     return (
         'left'        => ( $left        || 0 ),
@@ -175,6 +181,37 @@ sub read_header {
 =cut
 
 sub read_body {
+    my $self = shift;
+
+    print "read_body: $!\n" if ( $self->{'vorbis'} );
+    my ( $len, $rlen );
+    my $buf;
+    while (1) {
+        $len = 0;
+        ( $len, $buf ) = _read( $self, $self->{'soc'} );
+        printf "\nBody: %d bytes read.\n", ( $len || 0 );
+        last if ( !$len );
+
+        print { $self->{'fd'} } $buf if ( defined $self->{'fd'} );
+        $self->{'text'}->insert( 'end', $buf ) if ( $self->{'text'} );
+        $self->{'text'}->insert( 'end', datetime( $self, "Doned\n" ) )
+          if ( $self->{'text'} );
+
+        $rlen += $len;
+    }
+    return (
+        'len'    => ( $rlen || 0 ),
+        'buffer' => ( $buf  || '' )
+    );
+}
+
+=head2 read_body_to_len
+
+長さまでボディ受信
+
+=cut
+
+sub read_body_to_len {
     my $self = shift;
     my %args = (
         'left' => 0,
@@ -281,6 +318,25 @@ sub datetime {
     );
     $datetime = "[" . $datetime . "] " . $string if ($string);
     return $datetime;
+}
+
+=head2 recursive_dir
+
+ディレクトリ配下のファイルをリスト化
+
+=cut
+
+sub recursive_dir {
+    my $dir    = shift;
+    my @result = ();
+
+    find sub {
+        my $file = $_;
+        my $path = $File::Find::name;
+        push( @result, $path ) if ( -f $path );
+    }, $dir;
+
+    return @result;
 }
 
 # 受信

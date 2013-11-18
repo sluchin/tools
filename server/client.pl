@@ -61,7 +61,8 @@ my %opt = (
     'port'    => 80,
     'ssl'     => 0,
     'output'  => "client.dat",
-    'file'    => '',
+    'file'    => undef,
+    'dir'     => '',
     'count'   => 1,
     'nogui'   => 0,
     'vorbis'  => 0,
@@ -71,7 +72,7 @@ my %opt = (
 
 # バージョン情報表示
 sub print_version {
-    print "$progname version "
+    print "$progname version " 
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
@@ -89,16 +90,17 @@ sub usage {
 # オプション引数
 Getopt::Long::Configure(qw{no_getopt_compat no_auto_abbrev no_ignore_case});
 GetOptions(
-    'dest|i=s'   => \$opt{'dest'},
-    'port|p=i'   => \$opt{'port'},
-    'ssl'        => \$opt{'ssl'},
-    'output|o=s' => \$opt{'output'},
-    'file|f=s'   => \$opt{'file'},
-    'count|c=i'  => \$opt{'count'},
-    'nogui'      => \$opt{'nogui'},
-    'vorbis|v'   => \$opt{'vorbis'},
-    'help|h|?'   => \$opt{'help'},
-    'version|V'  => \$opt{'version'}
+    'dest|i=s'      => \$opt{'dest'},
+    'port|p=i'      => \$opt{'port'},
+    'ssl'           => \$opt{'ssl'},
+    'output|o=s'    => \$opt{'output'},
+    'file|f=s'      => \@{ $opt{'file'} },
+    'directory|d=s' => \$opt{'dir'},
+    'count|c=i'     => \$opt{'count'},
+    'nogui'         => \$opt{'nogui'},
+    'vorbis|v'      => \$opt{'vorbis'},
+    'help|h|?'      => \$opt{'help'},
+    'version|V'     => \$opt{'version'}
   )
   or usage()
   and exit( $stathash{'EX_NG'} );
@@ -190,6 +192,7 @@ sub http_client {
         'port'   => 80,
         'ssl'    => 0,
         'count'  => 1,
+        'text'   => undef,
         'vorbis' => 0,
         'msg'    => '',
         @_
@@ -248,6 +251,7 @@ sub http_client {
             'soc'    => $soc,
             'ssl'    => $args{'ssl'},
             'fd'     => $out,
+            'text'   => $args{'text'},
             'vorbis' => $args{'vorbis'}
         );
 
@@ -262,8 +266,12 @@ sub http_client {
         print $out ( $http->datetime("Started.") || '' ) . "\n";
         my %header = $http->read_header();
 
+        #$args{'text'}->insert('1.0', $header{'buffer'}) if ($args{'text'});
+
         # ボディ受信
         my %body = $http->read_body( 'left' => $header{'left'} );
+
+        #$args{'text'}->insert('1.0', $body{'buffer'}) if ($args{'text'});
         print $out "\n" . ( $http->datetime("Done.") || '' ) . "\n";
 
         if ( $args{'ssl'} ) {
@@ -278,21 +286,53 @@ sub http_client {
     close $out if ( defined $out );
     $out = undef;
 }
-my $msg;
-if ( $opt{'file'} ) {
-    open my $in, "<", "$opt{'file'}"
-      or $log->error("open[$opt{'file'}]: $!");
 
-    while ( defined( my $line = <$in> ) ) {
-        $msg .= $line;
+my $msg;
+if ( $opt{'nogui'} ) {
+    if ( @{ $opt{'file'} } ) {
+        foreach my $file ( @{ $opt{'file'} } ) {
+            open my $in, "<", $file
+              or $log->error("open[$file]: $!");
+
+            while ( defined( my $line = <$in> ) ) {
+                $msg .= $line;
+            }
+            close $in if ( defined $in );
+            $msg =~ s/\n/\r\n/g;
+            http_client(
+                'dest'   => $opt{'dest'},
+                'port'   => $opt{'port'},
+                'ssl'    => $opt{'ssl'},
+                'count'  => $opt{'count'},
+                'vorbis' => $opt{'vorbis'},
+                'msg'    => $msg,
+            );
+        }
     }
-    close $in if ( defined $in );
+    if ( $opt{'dir'} ) {
+        my @files = Http::recursive_dir( $opt{'dir'} );
+        foreach my $file (@files) {
+            open my $in, "<", $file
+              or $log->error("open[$file]: $!");
+
+            while ( defined( my $line = <$in> ) ) {
+                $msg .= $line;
+            }
+            close $in if ( defined $in );
+            $msg =~ s/\n/\r\n/g;
+            http_client(
+                'dest'   => $opt{'dest'},
+                'port'   => $opt{'port'},
+                'ssl'    => $opt{'ssl'},
+                'count'  => $opt{'count'},
+                'vorbis' => $opt{'vorbis'},
+                'msg'    => $msg,
+            );
+        }
+    }
 }
 else {
     $msg .= $send_header . "\n\n" . $send_body;
-}
-
-sub window {
     $win = Tk::HttpClient->new(
         'dest'      => $opt{'dest'},
         'port'      => $opt{'port'},
@@ -307,21 +347,6 @@ sub window {
         'iconfile' => $iconfile,
         'version'  => $VERSION,
     );
-}
-
-if ( $opt{'nogui'} ) {
-    $msg =~ s/\n/\r\n/g;
-    http_client(
-        'dest'   => $opt{'dest'},
-        'port'   => $opt{'port'},
-        'ssl'    => $opt{'ssl'},
-        'count'  => $opt{'count'},
-        'vorbis' => $opt{'vorbis'},
-        'msg'    => $msg,
-    );
-}
-else {
-    window();
 }
 
 exit( $stathash{'EX_OK'} );
@@ -342,6 +367,7 @@ client.pl [options]
         --ssl        Send for ssl.
    -o,  --output     Output send data.
    -f,  --file       Send data from file.
+   -d,  --directory  Send data from files in directory.
    -c,  --count      Repeat count.
    -v,  --vorbis     Display extra information.
         --nogui      Command line interface.

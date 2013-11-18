@@ -71,7 +71,7 @@ my %opt = (
 
 # バージョン情報表示
 sub print_version {
-    print "$progname version "
+    print "$progname version " 
       . $VERSION . "\n"
       . "  running on Perl version "
       . join( ".", map { $_ ||= 0; $_ * 1 } ( $] =~ /(\d)\.(\d{3})(\d{3})?/ ) )
