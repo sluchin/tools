@@ -37,7 +37,6 @@ use strict;
 use warnings;
 use Encode qw/decode_utf8/;
 use File::Basename qw/dirname/;
-use File::Find;
 use Socket;
 use Tk;
 use Tk::NoteBook;
@@ -83,6 +82,7 @@ sub init {
     $self->{'vorbis'}    = $args{'vorbis'};
     $self->{'msg'}       = $args{'msg'};
     $self->{'clientcmd'} = $args{'clientcmd'};
+    $self->{'text'};
 }
 
 =head1 METHODS
@@ -220,7 +220,7 @@ sub _tab_client {
     # 終了ボタン
     $tab->Button(
         -text    => decode_utf8("終了"),
-        -command => sub { _exit(); }
+        -command => sub { _exit( $self->{'mw'} ); }
     )->grid( -row => 6, -column => 5, -padx => 15, -pady => 15 );
 }
 
@@ -229,11 +229,20 @@ sub _tab_log {
     my $self = shift;
     my $tab  = shift;
 
+    $self->{'text'} = $tab->Scrolled(
+        'Text',
+        -background => 'white',
+        -width      => 80,
+        -height     => 50,
+        -wrap       => 'none',
+        -scrollbars => 'se'
+    )->pack( -side => 'left', -fill => 'both', -expand => 'yes' );
+
     # 終了ボタン
-    $tab->Button(
-        -text    => decode_utf8("終了"),
-        -command => sub { _exit(); }
-    )->grid( -row => 7, -column => 5, -padx => 15, -pady => 15 );
+    # $tab->Button(
+    #     -text    => decode_utf8("終了"),
+    #     -command => sub { _exit($self->{'mw'}); }
+    # )->pack(); #grid( -row => 7, -column => 5, -padx => 15, -pady => 15 );
 }
 
 # ファイルテーブル
@@ -245,13 +254,13 @@ sub _table_files {
 
     eval { use Tk::Table; };
     if ( !$@ ) {
-        my @dirs = _recursive_dir($parent);
-        my $rows = $#dirs + 1;
-        my $sub  = $top->Toplevel();          #MainWindow->new();
+        my @files = Http::recursive_dir($parent);
+        my $rows  = $#files + 1;
+        my $sub   = $top->Toplevel();               #MainWindow->new();
         $sub->protocol( 'WM_DELETE_WINDOW',
             [ \&_exit_table, $sub, $filelist ] );
         $sub->title( decode_utf8("ファイル") );
-        $sub->geometry("300x500");
+        $sub->geometry("500x500");
         $sub->resizable( 0, 0 );
         my $table = $sub->Table(
             -rows         => $rows,
@@ -263,13 +272,13 @@ sub _table_files {
         )->pack();
         my $row = 0;
 
-        for my $dir (@dirs) {
-            print "$dir\n";
+        foreach my $file (@files) {
+            print "$file\n";
             my $widget;
             my $value;
             $$widget = $table->Checkbutton(
                 -text     => "",
-                -onvalue  => $dir,
+                -onvalue  => $file,
                 -offvalue => '',
                 -variable => \$value,
                 -command  => sub {
@@ -282,7 +291,7 @@ sub _table_files {
                 }
             );
             $table->put( $row, 0, $$widget );
-            $table->put( $row, 1, $dir );
+            $table->put( $row, 1, $file );
             $row++;
         }
     }
@@ -324,6 +333,7 @@ sub _callback {
                         'port'   => $port,
                         'ssl'    => $self->{'ssl'},
                         'count'  => $self->{'count'},
+                        'text'   => $self->{'text'},
                         'vorbis' => $self->{'vorbis'},
                         'msg'    => $contents
                     );
@@ -344,6 +354,7 @@ sub _callback {
                 'port'   => $port,
                 'ssl'    => $self->{'ssl'},
                 'count'  => $self->{'count'},
+                'text'   => $self->{'text'},
                 'vorbis' => $self->{'vorbis'},
                 'msg'    => $contents
             );
@@ -366,30 +377,20 @@ sub _dir_dialog {
     }
 }
 
-# ディレクトリ配下のファイルをリスト化
-sub _recursive_dir {
-    my $dir    = shift;
-    my @result = ();
-
-    find sub {
-        my $file = $_;
-        my $path = $File::Find::name;
-        push( @result, $path ) if ( -f $path );
-    }, $dir;
-
-    return @result;
-}
-
 # 後処理
 sub _exit {
     my $mw = shift;
 
+    print "_exit\n";
+
     #$mw->destroy();
     #kill(&SIGKILL, $$);
-    foreach (@threads) {
-        my ($return) = $_->join;
-        print "$return closed\n";
-    }
+    # if (@threads) {
+    #     foreach (@threads) {
+    #         my ($return) = $_->join;
+    #         print "$return closed\n";
+    #     }
+    # }
     exit( $stathash{'EX_OK'} );
 }
 

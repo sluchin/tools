@@ -100,7 +100,7 @@ sub create_window {
     );
     my $mw;
     $mw = MainWindow->new();
-    $mw->protocol( 'WM_DELETE_WINDOW', [ \&_exit, $mw ] );
+    $mw->protocol( 'WM_DELETE_WINDOW', [ \&_exit, $self ] );
     $mw->title(
         decode_utf8("HTTPサーバ") . "  [v" . $args{'version'} . "]" );
     $mw->geometry("500x500");
@@ -170,9 +170,10 @@ sub _server {
         }
     )->grid( -row => 4, -column => 3, -padx => 15, -pady => 15 );
 
-    $self->{'mw'}
-      ->Button( -text => decode_utf8("終了"), -command => sub { _exit(); } )
-      ->grid( -row => 5, -column => 4, -padx => 15, -pady => 15 );
+    $self->{'mw'}->Button(
+        -text    => decode_utf8("終了"),
+        -command => sub { _exit($self); }
+    )->grid( -row => 5, -column => 4, -padx => 15, -pady => 15 );
 }
 
 sub _callback {
@@ -201,9 +202,17 @@ sub _exit {
     my $self = shift;
     print "_exit\n";
 
-    foreach (@threads) {
-        my ($return) = $_->join;
-        print "$return closed\n";
+    # foreach (@threads) {
+    #     my ($return) = $_->join;
+    #     print "$return closed\n";
+    # }
+    if (@threads) {
+        $self->{'stopcmd'}->(
+            'ip'     => $self->{'ip'},
+            'port'   => $self->{'port'},
+            'ssl'    => $self->{'ssl'},
+            'vorbis' => $self->{'vorbis'}
+        ) if ( defined $self->{'stopcmd'} );
     }
     exit( $stathash{'EX_OK'} );
 }
