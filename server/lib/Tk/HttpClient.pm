@@ -249,11 +249,11 @@ sub _tab_log {
 sub _table_files {
     my $self     = shift;
     my $top      = shift;
-    my $parent   = shift || '';
+    my $parent   = shift || undef;
     my $filelist = shift;
 
     eval { use Tk::Table; };
-    if ( !$@ ) {
+    if ( !$@ && defined $parent) {
         my @files = Http::recursive_dir($parent);
         my $rows  = $#files + 1;
         my $sub   = $top->Toplevel();
@@ -284,12 +284,7 @@ sub _table_files {
                 -command  => sub {
                     print "value: $value\n";
                     my @file = split(m# #, $value, 2);
-                    if ($file[0]) {
-                        $filelist->{$file[1]} = 1;
-                    }
-                    else {
-                        delete( $filelist->{$file[1]} );
-                    }
+                    $filelist->{$file[1]} = $file[0];
                 }
             );
             $table->put( $row, 0, $$widget );
