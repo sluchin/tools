@@ -131,7 +131,7 @@ sub read_header {
         ( $read_buffer =~ m/\r\n\r\n/ ) and last;
     }
     printf "\nHeader: %d bytes read.\n", ( $rlen || 0 );
-    print "*****\n" . $read_buffer . "\n" if ( $self->{'vorbis'} );
+    print $read_buffer . "\n" if ( $self->{'vorbis'} );
     ( $read_buffer =~ m/\r\n\r\n/ ) or return ();
 
     # ヘッダ長を取得
@@ -194,11 +194,12 @@ sub read_body {
 
         print { $self->{'fd'} } $buf if ( defined $self->{'fd'} );
         $self->{'text'}->insert( 'end', $buf ) if ( $self->{'text'} );
-        $self->{'text'}->insert( 'end', datetime( $self, "Doned\n" ) )
-          if ( $self->{'text'} );
 
         $rlen += $len;
     }
+    $self->{'text'}->insert( 'end', datetime( $self, "Doned\n" ) . "\n" )
+        if ( $self->{'text'} );
+
     return (
         'len'    => ( $rlen || 0 ),
         'buffer' => ( $buf  || '' )
