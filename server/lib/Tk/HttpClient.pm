@@ -69,6 +69,7 @@ sub init {
         'dir'       => '',
         'ssl'       => 0,
         'count'     => 1,
+        'icon'      => '',
         'vorbis'    => 0,
         'msg'       => '',
         'clientcmd' => undef,
@@ -79,10 +80,10 @@ sub init {
     $self->{'dir'}       = $args{'dir'};
     $self->{'ssl'}       = $args{'ssl'};
     $self->{'count'}     = $args{'count'};
+    $self->{'icon'}      = $args{'icon'};
     $self->{'vorbis'}    = $args{'vorbis'};
     $self->{'msg'}       = $args{'msg'};
     $self->{'clientcmd'} = $args{'clientcmd'};
-    $self->{'text'};
 }
 
 =head1 METHODS
@@ -96,7 +97,6 @@ sub init {
 sub create_window {
     my $self = shift;
     my %args = (
-        iconfile => '',
         version  => '',
         @_
     );
@@ -109,8 +109,8 @@ sub create_window {
     $mw->geometry("500x500");
     $mw->resizable( 0, 0 );
 
-    if ( -f $args{'iconfile'} ) {
-        my $image = $mw->Pixmap( -file => $args{'iconfile'} );
+    if ( -f $self->{'icon'} ) {
+        my $image = $mw->Pixmap( -file => $self->{'icon'} );
         $mw->Icon( -image => $image );
     }
     $self->{'mw'} = $mw;
@@ -197,6 +197,13 @@ sub _tab_client {
         -command => [ \&_dir_dialog, $tab, $entdir ]
     )->grid( -row => 4, -column => 4, -pady => 10 );
 
+    # 送信回数
+    $tab->Label( -text => decode_utf8("送信回数: ") )
+      ->grid( -row => 5, -column => 1, -pady => 7 );
+    my $entcnt =
+      $tab->Entry( -textvariable => $self->{'count'}, -width => 10 )
+      ->grid( -row => 5, -column => 2,  -pady => 7 );
+
     # 読込ボタン
     my $table;
     $tab->Button(
@@ -210,10 +217,11 @@ sub _tab_client {
     $tab->Button(
         -text    => decode_utf8("送信"),
         -command => sub {
-            my $thread =
-              threads->new( \&_callback, $self, $entdest->get, $entport->get,
-                $text->get( '1.0', 'end' ), %filelist );
-            push( @threads, $thread );
+            $self->{'dest'} = $entdest->get;
+            $self->{'port'} = $entport->get;
+            $self->{'cnt'}  = $entcnt->get;
+            $self->{'msg'}  =  $text->get( '1.0', 'end' );
+            _send_data($self, %filelist );
         }
     )->grid( -row => 5, -column => 4, -padx => 15, -pady => 15 );
 
@@ -262,6 +270,11 @@ sub _table_files {
         $sub->title( decode_utf8("ファイル") );
         $sub->geometry("500x500");
         $sub->resizable( 0, 0 );
+        if ( -f $self->{'icon'} ) {
+            my $image = $sub->Pixmap( -file => $self->{'icon'} );
+            $sub->Icon( -image => $image );
+        }
+
         my $table = $sub->Table(
             -rows         => $rows,
             -columns      => 2,
@@ -306,13 +319,11 @@ sub _exit_table {
     $sub->destroy();
 }
 
-# コールバック
-sub _callback {
+# データ送信
+sub _send_data {
     my $self     = shift;
-    my $dest     = shift;
-    my $port     = shift;
-    my $text     = shift;
     my %filelist = @_;
+
     my $contents;
     if (%filelist) {
         foreach my $key ( keys(%filelist) ) {
@@ -328,8 +339,8 @@ sub _callback {
                 $contents =~ s/\n/\r\n/g;
                 if ( defined $self->{'clientcmd'} ) {
                     $self->{'clientcmd'}->(
-                        'dest'   => $dest,
-                        'port'   => $port,
+                        'dest'   => $self->{'dest'},
+                        'port'   => $self->{'port'},
                         'ssl'    => $self->{'ssl'},
                         'count'  => $self->{'count'},
                         'text'   => $self->{'text'},
@@ -345,12 +356,12 @@ sub _callback {
         }
     }
     else {
-        $contents = $text;
+        $contents = $self->{'msg'};
         $contents =~ s/\n/\r\n/g;
         if ( defined $self->{'clientcmd'} ) {
             $self->{'clientcmd'}->(
-                'dest'   => $dest,
-                'port'   => $port,
+                'dest'   => $self->{'dest'},
+                'port'   => $self->{'port'},
                 'ssl'    => $self->{'ssl'},
                 'count'  => $self->{'count'},
                 'text'   => $self->{'text'},
@@ -380,8 +391,7 @@ sub _dir_dialog {
 sub _exit {
     my $mw = shift;
 
-    print "_exit\n";
-
+    #print "_exit\n";
     #$mw->destroy();
     #kill(&SIGKILL, $$);
     # if (@threads) {
