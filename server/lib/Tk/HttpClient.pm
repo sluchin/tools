@@ -256,7 +256,7 @@ sub _table_files {
     if ( !$@ ) {
         my @files = Http::recursive_dir($parent);
         my $rows  = $#files + 1;
-        my $sub   = $top->Toplevel();               #MainWindow->new();
+        my $sub   = $top->Toplevel();
         $sub->protocol( 'WM_DELETE_WINDOW',
             [ \&_exit_table, $sub, $filelist ] );
         $sub->title( decode_utf8("ファイル") );
@@ -278,15 +278,17 @@ sub _table_files {
             my $value;
             $$widget = $table->Checkbutton(
                 -text     => "",
-                -onvalue  => $file,
-                -offvalue => '',
+                -onvalue  => "1 $file",
+                -offvalue => "0 $file",
                 -variable => \$value,
                 -command  => sub {
-                    if ($value) {
-                        $filelist->{$value} = 1;
+                    print "value: $value\n";
+                    my @file = split(m# #, $value, 2);
+                    if ($file[0]) {
+                        $filelist->{$file[1]} = 1;
                     }
                     else {
-                        delete( $filelist->{$value} );
+                        delete( $filelist->{$file[1]} );
                     }
                 }
             );
@@ -319,10 +321,12 @@ sub _callback {
     my $contents;
     if (%filelist) {
         foreach my $key ( keys(%filelist) ) {
-            if ( -f $key ) {
+            if ( $filelist{$key} && -f $key ) {
+                print "file: $key\n";
                 open my $in, "<", "$key"
                   or print "open error: $!";
 
+                $contents = '';
                 while ( defined( my $line = <$in> ) ) {
                     $contents .= $line;
                 }
