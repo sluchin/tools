@@ -161,7 +161,7 @@ sub read_header {
     print "SequenceNo[" .     ( $sequence_no    || 0 ) . "]\n";
     print "Content-Length[" . ( $content_length || 0 ) . "]\n";
 
-    my $left = $content_length - $rlen;
+    my $left = $content_length - $rlen if ($content_length > $rlen);
     print { $self->{'fd'} } $read_buffer if ( defined $self->{'fd'} );
     $self->{'text'}->insert( 'end', datetime( $self, "Started\n" ) )
       if ( $self->{'text'} );

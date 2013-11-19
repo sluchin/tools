@@ -185,6 +185,7 @@ sub sig_handler {
 }
 
 $SIG{'INT'} = \&sig_handler;
+#$SIG{PIPE} = 'IGNORE';
 
 sub http_client {
     my %args = (
@@ -227,7 +228,8 @@ sub http_client {
           or $log->warning("socket: $!");
         if ( !connect( $soc, $dest_params ) ) {
             $log->warning("connect: $!");
-            exit $stathash{'EX_NG'};
+            return;
+            #exit $stathash{'EX_NG'};
         }
 
         select($soc);
@@ -338,13 +340,13 @@ else {
         'port'      => $opt{'port'},
         'ssl'       => $opt{'ssl'},
         'count'     => $opt{'count'},
+        'icon'      => $iconfile,
         'vorbis'    => $opt{'vorbis'},
         'msg'       => $msg,
         'clientcmd' => \&http_client,
     );
 
     $win->create_window(
-        'iconfile' => $iconfile,
         'version'  => $VERSION,
     );
 }
