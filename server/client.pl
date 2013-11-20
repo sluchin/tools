@@ -226,9 +226,11 @@ sub http_client {
 
         socket( $soc, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
           or $log->error("socket: $!");
-        if ( !connect( $soc, $dest_params ) ) {
+        if ( connect( $soc, $dest_params ) ) {
             $log->error("connect: $!");
-            return;
+            close $soc and print "close $soc\n";
+            $soc = undef;
+            last;
         }
 
         select($soc);
