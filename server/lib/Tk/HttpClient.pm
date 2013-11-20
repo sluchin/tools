@@ -218,6 +218,8 @@ sub _tab_client {
         -text    => decode_utf8("送信"),
         -command => sub {
             $SIG{PIPE} = sub { return; };
+            $SIG{INT} = sub { return; };
+            $SIG{ALRM} = sub { return; };
             $self->{'dest'} = $entdest->get;
             $self->{'port'} = $entport->get;
             $self->{'cnt'}  = $entcnt->get;
@@ -269,42 +271,83 @@ sub _table_files {
         $sub->protocol( 'WM_DELETE_WINDOW',
             [ \&_exit_table, $sub, $filelist ] );
         $sub->title( decode_utf8("ファイル") );
-        $sub->geometry("500x500");
-        $sub->resizable( 0, 0 );
+        $sub->geometry("400x200");
+        #$sub->resizable( 0, 0 );
         if ( -f $self->{'icon'} ) {
             my $image = $sub->Pixmap( -file => $self->{'icon'} );
             $sub->Icon( -image => $image );
         }
 
-        my $table = $sub->Table(
+        my $table_frm = $sub->Frame()->pack();
+        my $table = $table_frm->Table(
             -rows         => $rows,
             -columns      => 2,
             -scrollbars   => 'se',
             -fixedrows    => 1,
             -fixedcolumns => 1,
-            -takefocus    => 1
-        )->pack();
-        my $row = 0;
+            -takefocus    => 1,
+            -relief       => 'raised',
+        );
 
+        my $row = 0;
+        my @checkb;
         foreach my $file (@files) {
-            print "$file\n";
-            my $widget;
+            #print "$file\n";
             my $value;
-            $$widget = $table->Checkbutton(
+
+            $checkb[$row] = $table->Checkbutton(
                 -text     => "",
                 -onvalue  => "1 $file",
                 -offvalue => "0 $file",
                 -variable => \$value,
                 -command  => sub {
-                    print "value: $value\n";
+                    #print "value: $value\n";
                     my @file = split(m# #, $value, 2);
                     $filelist->{$file[1]} = $file[0];
                 }
             );
-            $table->put( $row, 0, $$widget );
-            $table->put( $row, 1, $file );
+            my $label = $table->Label(
+                -text       => $file,
+                -padx       => 2,
+                -anchor     => 'w',
+                -background => 'white',
+                -relief     => 'groove'
+            );
+            $table->put( $row, 0, $checkb[$row] );
+            $table->put( $row, 1, $label );
             $row++;
         }
+        $table->pack();
+        my $button_frm = $sub->Frame( -borderwidth => 4 )->pack();
+
+        # 選択解除ボタン
+        $button_frm->Button(
+            -text    => decode_utf8("選択解除"),
+            -command => sub {
+                #print $rows."\n";
+                for (my $i = 0; $i < $rows; $i++) {
+                    $checkb[$i]->deselect;
+                }
+            }
+        )->pack(-anchor => 'w', -side => 'left');
+
+        # 全選択ボタン
+        $button_frm->Button(
+            -text    => decode_utf8("全選択"),
+            -command => sub {
+                #print $rows."\n";
+                for (my $i = 0; $i < $rows; $i++) {
+                    $checkb[$i]->select;
+                }
+            }
+        )->pack(-anchor => 'w', -side => 'left');
+
+        # 終了ボタン
+        $button_frm->Button(
+            -text    => decode_utf8("閉じる"),
+            -command => sub { _exit_table($sub, $filelist); }
+        )->pack(-anchor => 'w', -side => 'left');
+
     }
     else {
         print "no Tk::Table\n";
@@ -315,7 +358,7 @@ sub _table_files {
 sub _exit_table {
     my $sub      = shift;
     my $filelist = shift;
-    print "_exit_table\n";
+    #print "_exit_table\n";
     $filelist = ();
     $sub->destroy();
 }
