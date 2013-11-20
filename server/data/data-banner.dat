@@ -1,9 +1,0 @@
-POST /api/data/banner HTTP/1.1
-Accept-Encoding: idntiry
-user-agent: Chronicle
-Content-Type: application/x-www-form-urlencoded
-AppVersion: 0.13
-Platform: 2
-Host: api.chain-chronicle.net
-Connection: Keep-Alive
-

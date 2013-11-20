@@ -4,6 +4,8 @@
 *.BAK
 *.csv
 *.log
+*.dat
 cookie.txt
 caltime/tcard.conf
 caltime/tcard.log
+server/data
