@@ -222,14 +222,13 @@ sub http_client {
         my $ipaddr = gethostbyname( $args{'dest'} );
 
         my $dest_params = sockaddr_in( $args{'port'}, $ipaddr )
-          or $log->warning("Cannot pack: $!");
+          or $log->error("Cannot pack: $!");
 
         socket( $soc, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
-          or $log->warning("socket: $!");
+          or $log->error("socket: $!");
         if ( !connect( $soc, $dest_params ) ) {
-            $log->warning("connect: $!");
+            $log->error("connect: $!");
             return;
-            #exit $stathash{'EX_NG'};
         }
 
         select($soc);

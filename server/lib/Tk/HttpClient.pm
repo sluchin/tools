@@ -140,13 +140,13 @@ sub messagebox {
             -type    => 'Ok',
             -icon    => 'error',
             -title   => decode_utf8("エラー"),
-            -message => $mes || ''
+            -message => decode_utf8($mes) || ''
         ) if ( lc $level eq 'error' );
         $mw->messageBox(
             -type    => 'Ok',
             -icon    => 'warning',
             -title   => decode_utf8("警告"),
-            -message => $mes || ''
+            -message => decode_utf8($mes) || ''
         ) if ( lc $level eq 'warning' );
     }
 }
@@ -217,6 +217,7 @@ sub _tab_client {
     $tab->Button(
         -text    => decode_utf8("送信"),
         -command => sub {
+            $SIG{PIPE} = sub { return; };
             $self->{'dest'} = $entdest->get;
             $self->{'port'} = $entport->get;
             $self->{'cnt'}  = $entcnt->get;
