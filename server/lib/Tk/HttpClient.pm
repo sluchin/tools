@@ -271,14 +271,14 @@ sub _table_files {
         $sub->protocol( 'WM_DELETE_WINDOW',
             [ \&_exit_table, $sub, $filelist ] );
         $sub->title( decode_utf8("ファイル") );
-        $sub->geometry("400x200");
+        $sub->geometry("600x500");
         #$sub->resizable( 0, 0 );
         if ( -f $self->{'icon'} ) {
             my $image = $sub->Pixmap( -file => $self->{'icon'} );
             $sub->Icon( -image => $image );
         }
 
-        my $table_frm = $sub->Frame()->pack();
+        my $table_frm = $sub->Frame()->pack(-side => 'left');
         my $table = $table_frm->Table(
             -rows         => $rows,
             -columns      => 2,
@@ -301,7 +301,7 @@ sub _table_files {
                 -offvalue => "0 $file",
                 -variable => \$value,
                 -command  => sub {
-                    #print "value: $value\n";
+                    print "value: $value\n";
                     my @file = split(m# #, $value, 2);
                     $filelist->{$file[1]} = $file[0];
                 }
@@ -318,18 +318,7 @@ sub _table_files {
             $row++;
         }
         $table->pack();
-        my $button_frm = $sub->Frame( -borderwidth => 4 )->pack();
-
-        # 選択解除ボタン
-        $button_frm->Button(
-            -text    => decode_utf8("選択解除"),
-            -command => sub {
-                #print $rows."\n";
-                for (my $i = 0; $i < $rows; $i++) {
-                    $checkb[$i]->deselect;
-                }
-            }
-        )->pack(-anchor => 'w', -side => 'left');
+        my $button_frm = $sub->Frame( -borderwidth => 4 )->pack( -side => 'left' );
 
         # 全選択ボタン
         $button_frm->Button(
@@ -337,16 +326,28 @@ sub _table_files {
             -command => sub {
                 #print $rows."\n";
                 for (my $i = 0; $i < $rows; $i++) {
-                    $checkb[$i]->select;
+                    $checkb[$i]->invoke;
                 }
             }
-        )->pack(-anchor => 'w', -side => 'left');
+        )->pack(-anchor => 'ne', -side => 'top');
+
+        # 選択解除ボタン
+        $button_frm->Button(
+            -text    => decode_utf8("解除"),
+            -command => sub {
+                #print $rows."\n";
+                for (my $i = 0; $i < $rows; $i++) {
+                    $checkb[$i]->deselect;
+                }
+                $filelist = ();
+            }
+        )->pack(-anchor => 'ne', -side => 'top');
 
         # 終了ボタン
         $button_frm->Button(
             -text    => decode_utf8("閉じる"),
             -command => sub { _exit_table($sub, $filelist); }
-        )->pack(-anchor => 'w', -side => 'left');
+        )->pack(-anchor => 'ne', -side => 'top');
 
     }
     else {
