@@ -116,6 +116,8 @@ sub read_header {
     my ( $read_buffer, $buf );
     my ( $len, $rlen ) = 0;
 
+    $self->{'text'}->insert( 'end', datetime( $self, "Read started.\n" ) )
+      if ( $self->{'text'} );
     while (1) {
         $len = 0;
         ( $len, $buf ) = _read( $self, $self->{'soc'} );
@@ -165,8 +167,6 @@ sub read_header {
 
     my $left = $content_length - $rlen if ( $content_length > $rlen );
     print { $self->{'fd'} } $read_buffer if ( defined $self->{'fd'} );
-    $self->{'text'}->insert( 'end', datetime( $self, "Started\n" ) )
-      if ( $self->{'text'} );
     $self->{'text'}->insert( 'end', $read_buffer ) if ( $self->{'text'} );
 
     return (
@@ -199,9 +199,9 @@ sub read_body {
 
         $rlen += $len;
     }
-    $self->{'text'}->insert( 'end', datetime( $self, "Doned\n" ) . "\n" )
-      if ( $self->{'text'} );
     printf "\nBody: %d bytes read.\n", ( $rlen || 0 );
+    $self->{'text'}->insert( 'end', datetime( $self, "Read doned.\n" ) . "\n" )
+      if ( $self->{'text'} );
 
     return (
         'len'    => ( $rlen || 0 ),
@@ -272,7 +272,17 @@ sub write_msg {
       . ( $body || '' );
 
     # 送信
+    $self->{'text'}->insert( 'end', datetime( $self, "Write Started.\n" ) . "\n" )
+      if ( $self->{'text'} );
+
     my $len = _write( $self, $self->{'soc'}, $msg );
+    if ( $self->{'text'} ) {
+        if ($len > 0) {
+            $self->{'text'}->insert( 'end', $msg );
+        }
+        $self->{'text'}->insert( 'end', datetime( $self, "Write Doned.\n" ) . "\n" )
+    }
+
     printf "\n%d bytes write.\n", $len || 0;
 
     return (
