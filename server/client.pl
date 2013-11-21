@@ -222,11 +222,11 @@ sub http_client {
         my $ipaddr = gethostbyname( $args{'dest'} );
 
         my $dest_params = sockaddr_in( $args{'port'}, $ipaddr )
-          or $log->error("Cannot pack: $!");
+          or $log->error("Cannot pack: $!") and last;
 
         socket( $soc, PF_INET, SOCK_STREAM, getprotobyname("tcp") )
-          or $log->error("socket: $!");
-        if ( connect( $soc, $dest_params ) ) {
+          or $log->error("socket: $!") and last;
+        if ( !connect( $soc, $dest_params ) ) {
             $log->error("connect: $!");
             close $soc and print "close $soc\n";
             $soc = undef;
