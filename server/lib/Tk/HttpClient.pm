@@ -152,10 +152,11 @@ sub messagebox {
 }
 
 # 送信タブ
+my %filelist;
 sub _tab_client {
     my $self = shift;
     my $tab  = shift;
-    my %filelist;
+    #my %filelist;
 
     # IPアドレス
     $tab->Label( -text => decode_utf8("アドレス: ") )
@@ -209,7 +210,7 @@ sub _tab_client {
     $tab->Button(
         -text    => decode_utf8("読込"),
         -command => sub {
-            _table_files( $self, $tab, $entdir->get, \%filelist );
+            _table_files( $self, $tab, $entdir->get );
         }
     )->grid( -row => 5, -column => 3, -padx => 15, -pady => 15 );
 
@@ -218,13 +219,13 @@ sub _tab_client {
         -text    => decode_utf8("送信"),
         -command => sub {
             $SIG{PIPE} = sub { return; };
-            $SIG{INT} = sub { return; };
-            $SIG{ALRM} = sub { return; };
+            #$SIG{INT} = sub { return; };
+            #$SIG{ALRM} = sub { return; };
             $self->{'dest'} = $entdest->get;
             $self->{'port'} = $entport->get;
             $self->{'cnt'}  = $entcnt->get;
             $self->{'msg'}  =  $text->get( '1.0', 'end' );
-            _send_data($self, %filelist );
+            _send_data($self);
         }
     )->grid( -row => 5, -column => 4, -padx => 15, -pady => 15 );
 
@@ -261,7 +262,8 @@ sub _table_files {
     my $self     = shift;
     my $top      = shift;
     my $parent   = shift || undef;
-    my $filelist = shift;
+    #my $filelist = shift;
+    #my $filelist = \%filelist;
 
     eval { use Tk::Table; };
     if ( !$@ && defined $parent) {
@@ -269,7 +271,7 @@ sub _table_files {
         my $rows  = $#files + 1;
         my $sub   = $top->Toplevel();
         $sub->protocol( 'WM_DELETE_WINDOW',
-            [ \&_exit_table, $sub, $filelist ] );
+            [ \&_exit_table, $sub, %filelist ] );
         $sub->title( decode_utf8("ファイル") );
         $sub->geometry("600x500");
         #$sub->resizable( 0, 0 );
@@ -303,7 +305,7 @@ sub _table_files {
                 -command  => sub {
                     print "value: $value\n";
                     my @file = split(m# #, $value, 2);
-                    $filelist->{$file[1]} = $file[0];
+                    $filelist{$file[1]} = $file[0];
                 }
             );
             my $label = $table->Label(
@@ -339,16 +341,15 @@ sub _table_files {
                 for (my $i = 0; $i < $rows; $i++) {
                     $checkb[$i]->deselect;
                 }
-                $filelist = ();
+                %filelist = (); # 初期化
             }
         )->pack(-anchor => 'ne', -side => 'top');
 
         # 終了ボタン
         $button_frm->Button(
             -text    => decode_utf8("閉じる"),
-            -command => sub { _exit_table($sub, $filelist); }
+            -command => sub { _exit_table($sub); }
         )->pack(-anchor => 'ne', -side => 'top');
-
     }
     else {
         print "no Tk::Table\n";
@@ -358,16 +359,15 @@ sub _table_files {
 # テーブル終了
 sub _exit_table {
     my $sub      = shift;
-    my $filelist = shift;
+
     #print "_exit_table\n";
-    $filelist = ();
+    %filelist = (); # 初期化
     $sub->destroy();
 }
 
 # データ送信
 sub _send_data {
     my $self     = shift;
-    my %filelist = @_;
 
     my $contents;
     if (%filelist) {
