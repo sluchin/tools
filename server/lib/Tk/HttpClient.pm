@@ -41,11 +41,6 @@ use Socket;
 use Tk;
 use Tk::NoteBook;
 
-use threads;
-
-#use Thread::Queue;
-my @threads;
-
 # ステータス
 my %stathash = (
     'EX_OK' => 0,    # 正常終了
@@ -97,7 +92,7 @@ sub init {
 sub create_window {
     my $self = shift;
     my %args = (
-        version  => '',
+        version => '',
         @_
     );
     my $mw;
@@ -153,9 +148,11 @@ sub messagebox {
 
 # 送信タブ
 my %filelist;
+
 sub _tab_client {
     my $self = shift;
     my $tab  = shift;
+
     #my %filelist;
 
     # IPアドレス
@@ -193,18 +190,6 @@ sub _tab_client {
       $tab->Entry( -textvariable => $self->{'dir'}, -width => 30 )
       ->grid( -row => 4, -column => 2, -columnspan => 2, -pady => 7 );
 
-    $tab->Button(
-        -text    => decode_utf8("選択"),
-        -command => [ \&_dir_dialog, $tab, $entdir ]
-    )->grid( -row => 4, -column => 4, -pady => 10 );
-
-    # 送信回数
-    $tab->Label( -text => decode_utf8("送信回数: ") )
-      ->grid( -row => 5, -column => 1, -pady => 7 );
-    my $entcnt =
-      $tab->Entry( -textvariable => $self->{'count'}, -width => 10 )
-      ->grid( -row => 5, -column => 2,  -pady => 7 );
-
     # 読込ボタン
     my $table;
     $tab->Button(
@@ -212,22 +197,33 @@ sub _tab_client {
         -command => sub {
             _table_files( $self, $tab, $entdir->get );
         }
-    )->grid( -row => 5, -column => 3, -padx => 15, -pady => 15 );
+    )->grid( -row => 4, -column => 4, -padx => 15, -pady => 15 );
+
+    # 選択ボタン
+    $tab->Button(
+        -text    => decode_utf8("選択"),
+        -command => [ \&_dir_dialog, $tab, $entdir ]
+    )->grid( -row => 4, -column => 5, -pady => 10 );
+
+    # 送信回数
+    $tab->Label( -text => decode_utf8("送信回数: ") )
+      ->grid( -row => 5, -column => 1, -pady => 7 );
+    my $entcnt =
+      $tab->Entry( -textvariable => $self->{'count'}, -width => 10 )
+      ->grid( -row => 5, -column => 2, -pady => 7 );
 
     # 送信ボタン
     $tab->Button(
         -text    => decode_utf8("送信"),
         -command => sub {
             $SIG{PIPE} = sub { return; };
-            #$SIG{INT} = sub { return; };
-            #$SIG{ALRM} = sub { return; };
             $self->{'dest'} = $entdest->get;
             $self->{'port'} = $entport->get;
             $self->{'cnt'}  = $entcnt->get;
-            $self->{'msg'}  =  $text->get( '1.0', 'end' );
+            $self->{'msg'}  = $text->get( '1.0', 'end' );
             _send_data($self);
         }
-    )->grid( -row => 5, -column => 4, -padx => 15, -pady => 15 );
+    )->grid( -row => 5, -column => 3, -padx => 15, -pady => 15 );
 
     # 終了ボタン
     $tab->Button(
@@ -249,125 +245,103 @@ sub _tab_log {
         -wrap       => 'none',
         -scrollbars => 'se'
     )->pack( -side => 'left', -fill => 'both', -expand => 'yes' );
-
-    # 終了ボタン
-    # $tab->Button(
-    #     -text    => decode_utf8("終了"),
-    #     -command => sub { _exit($self->{'mw'}); }
-    # )->pack(); #grid( -row => 7, -column => 5, -padx => 15, -pady => 15 );
 }
 
 # ファイルテーブル
 sub _table_files {
-    my $self     = shift;
-    my $top      = shift;
-    my $parent   = shift || undef;
-    #my $filelist = shift;
-    #my $filelist = \%filelist;
+    my $self   = shift;
+    my $top    = shift;
+    my $parent = shift || undef;
 
+    print "no entry\n" and return
+      unless ( defined $parent );
+
+    # table
     eval { use Tk::Table; };
-    if ( !$@ && defined $parent) {
-        my @files = Http::recursive_dir($parent);
-        my $rows  = $#files + 1;
-        my $sub   = $top->Toplevel();
-        $sub->protocol( 'WM_DELETE_WINDOW',
-            [ \&_exit_table, $sub, %filelist ] );
-        $sub->title( decode_utf8("ファイル") );
-        $sub->geometry("600x500");
-        #$sub->resizable( 0, 0 );
-        if ( -f $self->{'icon'} ) {
-            my $image = $sub->Pixmap( -file => $self->{'icon'} );
-            $sub->Icon( -image => $image );
-        }
+    print "no Tk::Table\n" and return if ($@);
 
-        my $table_frm = $sub->Frame()->pack(-side => 'left');
-        my $table = $table_frm->Table(
-            -rows         => $rows,
-            -columns      => 2,
-            -scrollbars   => 'se',
-            -fixedrows    => 1,
-            -fixedcolumns => 1,
-            -takefocus    => 1,
-            -relief       => 'raised',
+    my @files = Http::recursive_dir($parent);
+    my $rows  = $#files + 1;
+    my $sub   = $top->Toplevel();
+    $sub->protocol( 'WM_DELETE_WINDOW', [ \&_exit_table, $sub, %filelist ] );
+    $sub->title( decode_utf8("ファイル") );
+    $sub->geometry("600x500");
+
+    if ( -f $self->{'icon'} ) {
+        my $image = $sub->Pixmap( -file => $self->{'icon'} );
+        $sub->Icon( -image => $image );
+    }
+
+    my $table_frm = $sub->Frame()->pack( -side => 'left' );
+    my $table = $table_frm->Table(
+        -rows         => $rows,
+        -columns      => 2,
+        -scrollbars   => 'se',
+        -fixedrows    => 1,
+        -fixedcolumns => 1,
+        -takefocus    => 1,
+        -relief       => 'raised',
+    );
+
+    my $row = 0;
+    my @checkb;
+    foreach my $file (@files) {
+
+        #print "$file\n";
+        my $value;
+
+        $checkb[$row] = $table->Checkbutton(
+            -text     => "",
+            -onvalue  => "1 $file",
+            -offvalue => "0 $file",
+            -variable => \$value,
+            -command  => sub {
+                print "value: $value\n" if ( $self->{'vorbis'} );
+                my @file = split( m# #, $value, 2 );
+                $filelist{ $file[1] } = $file[0];
+            }
         );
+        my $label = $table->Label(
+            -text       => $file,
+            -padx       => 2,
+            -anchor     => 'w',
+            -background => 'white',
+            -relief     => 'groove'
+        );
+        $table->put( $row, 0, $checkb[$row] );
+        $table->put( $row, 1, $label );
+        $row++;
+    }
+    $table->pack();
+    my $button_frm = $sub->Frame( -borderwidth => 4 )->pack( -side => 'left' );
 
-        my $row = 0;
-        my @checkb;
-        foreach my $file (@files) {
-            #print "$file\n";
-            my $value;
-
-            $checkb[$row] = $table->Checkbutton(
-                -text     => "",
-                -onvalue  => "1 $file",
-                -offvalue => "0 $file",
-                -variable => \$value,
-                -command  => sub {
-                    print "value: $value\n";
-                    my @file = split(m# #, $value, 2);
-                    $filelist{$file[1]} = $file[0];
-                }
-            );
-            my $label = $table->Label(
-                -text       => $file,
-                -padx       => 2,
-                -anchor     => 'w',
-                -background => 'white',
-                -relief     => 'groove'
-            );
-            $table->put( $row, 0, $checkb[$row] );
-            $table->put( $row, 1, $label );
-            $row++;
+    # 選択ボタン
+    $button_frm->Button(
+        -text    => decode_utf8("選択"),
+        -command => sub {
+            for ( my $i = 0 ; $i < $rows ; $i++ ) {
+                $checkb[$i]->invoke;
+            }
         }
-        $table->pack();
-        my $button_frm = $sub->Frame( -borderwidth => 4 )->pack( -side => 'left' );
+    )->pack( -anchor => 'ne', -side => 'top' );
 
-        # 全選択ボタン
-        $button_frm->Button(
-            -text    => decode_utf8("全選択"),
-            -command => sub {
-                #print $rows."\n";
-                for (my $i = 0; $i < $rows; $i++) {
-                    $checkb[$i]->invoke;
-                }
-            }
-        )->pack(-anchor => 'ne', -side => 'top');
-
-        # 選択解除ボタン
-        $button_frm->Button(
-            -text    => decode_utf8("解除"),
-            -command => sub {
-                #print $rows."\n";
-                for (my $i = 0; $i < $rows; $i++) {
-                    $checkb[$i]->deselect;
-                }
-                %filelist = (); # 初期化
-            }
-        )->pack(-anchor => 'ne', -side => 'top');
-
-        # 終了ボタン
-        $button_frm->Button(
-            -text    => decode_utf8("閉じる"),
-            -command => sub { _exit_table($sub); }
-        )->pack(-anchor => 'ne', -side => 'top');
-    }
-    else {
-        print "no Tk::Table\n";
-    }
+    # 終了ボタン
+    $button_frm->Button(
+        -text    => decode_utf8("閉じる"),
+        -command => sub { _exit_table($sub); }
+    )->pack( -anchor => 'ne', -side => 'top' );
 }
 
 # テーブル終了
 sub _exit_table {
-    my $sub      = shift;
-
-    #print "_exit_table\n";
-    %filelist = (); # 初期化
+    my $sub = shift;
+    %filelist = ();    # 初期化
     $sub->destroy();
 }
 
 # データ送信
 sub _send_data {
-    my $self     = shift;
+    my $self = shift;
 
     my $contents;
     if (%filelist) {
@@ -436,16 +410,11 @@ sub _dir_dialog {
 sub _exit {
     my $mw = shift;
 
-    #print "_exit\n";
-    #$mw->destroy();
-    #kill(&SIGKILL, $$);
-    # if (@threads) {
-    #     foreach (@threads) {
-    #         my ($return) = $_->join;
-    #         print "$return closed\n";
-    #     }
-    # }
-    exit( $stathash{'EX_OK'} );
+    $SIG{INT}  = 'IGNORE';
+    $SIG{ALRM} = 'IGNORE';
+
+    $mw->destroy();
+    Tk::exit( $stathash{'EX_OK'} );
 }
 
 1;

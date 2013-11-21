@@ -125,7 +125,7 @@ sub read_header {
         last if ( !$len );
         $rlen += $len;
         if ( $read_buffer =~ m/^EOF/ ) {
-            print "read_buffer match EOF\n";
+            print "read_buffer match EOF\n" if ( $self->{'vorbis'} );
             return ();
         }
         ( $read_buffer =~ m/\r\n\r\n/ ) and last;
@@ -138,7 +138,7 @@ sub read_header {
     my @header = split m/\r\n\r\n/, $read_buffer;    # ヘッダ分割
     my $hlen = bytes::length( $header[0] ) if ( defined $header[0] );
     $hlen += bytes::length("\r\n\r\n");
-    print "Header length[" . ( $hlen || 0 ) . "]\n";
+    print "Header length[" . ( $hlen || 0 ) . "]\n" if ( $self->{'vorbis'} );
     $rlen -= $hlen;
 
     # シーケンス番号とコンテンツ長取得
@@ -158,10 +158,12 @@ sub read_header {
             $line =~ m/^$/ and last;
         }
     }
-    print "SequenceNo[" .     ( $sequence_no    || 0 ) . "]\n";
-    print "Content-Length[" . ( $content_length || 0 ) . "]\n";
+    print "SequenceNo[" . ( $sequence_no || 0 ) . "]\n"
+      if ( $self->{'vorbis'} );
+    print "Content-Length[" . ( $content_length || 0 ) . "]\n"
+      if ( $self->{'vorbis'} );
 
-    my $left = $content_length - $rlen if ($content_length > $rlen);
+    my $left = $content_length - $rlen if ( $content_length > $rlen );
     print { $self->{'fd'} } $read_buffer if ( defined $self->{'fd'} );
     $self->{'text'}->insert( 'end', datetime( $self, "Started\n" ) )
       if ( $self->{'text'} );
@@ -189,7 +191,7 @@ sub read_body {
     while (1) {
         $len = 0;
         ( $len, $buf ) = _read( $self, $self->{'soc'} );
-        printf "\nBody: %d bytes read.\n", ( $len || 0 );
+        printf "length: %d\n", ( $len || 0 ) if ( $self->{'vorbis'} );
         last if ( !$len );
 
         print { $self->{'fd'} } $buf if ( defined $self->{'fd'} );
@@ -198,7 +200,8 @@ sub read_body {
         $rlen += $len;
     }
     $self->{'text'}->insert( 'end', datetime( $self, "Doned\n" ) . "\n" )
-        if ( $self->{'text'} );
+      if ( $self->{'text'} );
+    printf "\nBody: %d bytes read.\n", ( $rlen || 0 );
 
     return (
         'len'    => ( $rlen || 0 ),
@@ -359,7 +362,7 @@ sub _read {
     }
     my $len = bytes::length( $buf || '' ) || 0;
     print "len: $len\n" if ( $self->{'vorbis'} );
-    die "read error: $!\n"
+    print "read error: $!\n"
       if ( !$len
         && ( !$!{EAGAIN} && !$!{EINTR} && !$!{ENOBUFS} && $! ) );
     return ( $len, $buf );
@@ -380,7 +383,7 @@ sub _write {
         send( $soc, $msg, 0 );
     }
     my $len = bytes::length( $msg || '' ) || 0;
-    die "write error: $!\n"
+    print "write error: $!\n"
       if ( !$!{EAGAIN} && !$!{EINTR} && !$!{ENOBUFS} && $! );
     return $len;
 }
