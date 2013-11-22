@@ -116,7 +116,7 @@ sub read_header {
     my ( $read_buffer, $buf );
     my ( $len, $rlen ) = 0;
 
-    $self->{'text'}->insert( 'end', datetime( $self, "Read started.\n" ) )
+    $self->{'text'}->insert( 'end', datetime( $self, "Readed.\n" ) )
       if ( $self->{'text'} );
     while (1) {
         $len = 0;
@@ -200,7 +200,7 @@ sub read_body {
         $rlen += $len;
     }
     printf "\nBody: %d bytes read.\n", ( $rlen || 0 );
-    $self->{'text'}->insert( 'end', datetime( $self, "Read doned.\n" ) . "\n" )
+    $self->{'text'}->insert( 'end', datetime( $self, "Done.\n\n" ) )
       if ( $self->{'text'} );
 
     return (
@@ -272,7 +272,7 @@ sub write_msg {
       . ( $body || '' );
 
     # 送信
-    $self->{'text'}->insert( 'end', datetime( $self, "Write Started.\n" ) . "\n" )
+    $self->{'text'}->insert( 'end', datetime( $self, "Writed.\n" ) )
       if ( $self->{'text'} );
 
     my $len = _write( $self, $self->{'soc'}, $msg );
@@ -280,7 +280,7 @@ sub write_msg {
         if ($len > 0) {
             $self->{'text'}->insert( 'end', $msg );
         }
-        $self->{'text'}->insert( 'end', datetime( $self, "Write Doned.\n" ) . "\n" )
+        $self->{'text'}->insert( 'end', datetime( $self, "Done.\n\n" ) )
     }
 
     printf "\n%d bytes write.\n", $len || 0;
@@ -347,7 +347,7 @@ sub recursive_dir {
     find sub {
         my $file = $_;
         my $path = $File::Find::name;
-        push( @result, $path ) if ( -f $path );
+        push( @result, $path ) if ( -f $path && ( $path =~ m/.*\.dat$/ ) );
     }, $dir;
 
     return @result;
