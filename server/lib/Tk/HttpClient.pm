@@ -190,6 +190,12 @@ sub _tab_client {
       $tab->Entry( -textvariable => $self->{'dir'}, -width => 30 )
       ->grid( -row => 4, -column => 2, -columnspan => 2, -pady => 7 );
 
+    # 選択ボタン
+    $tab->Button(
+        -text    => decode_utf8("選択"),
+        -command => [ \&_dir_dialog, $tab, $entdir ]
+    )->grid( -row => 4, -column => 4, -pady => 10 );
+
     # 読込ボタン
     my $table;
     $tab->Button(
@@ -197,13 +203,7 @@ sub _tab_client {
         -command => sub {
             _table_files( $self, $tab, $entdir->get );
         }
-    )->grid( -row => 4, -column => 4, -padx => 15, -pady => 15 );
-
-    # 選択ボタン
-    $tab->Button(
-        -text    => decode_utf8("選択"),
-        -command => [ \&_dir_dialog, $tab, $entdir ]
-    )->grid( -row => 4, -column => 5, -pady => 10 );
+    )->grid( -row => 4, -column => 5, -padx => 15, -pady => 15 );
 
     # 送信回数
     $tab->Label( -text => decode_utf8("送信回数: ") )
