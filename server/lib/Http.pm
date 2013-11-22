@@ -116,7 +116,7 @@ sub read_header {
     my ( $read_buffer, $buf );
     my ( $len, $rlen ) = 0;
 
-    $self->{'text'}->insert( 'end', datetime( $self, "Readed.\n" ) )
+    $self->{'text'}->insert( 'end', datetime( $self, "Started reading.\n" ) )
       if ( $self->{'text'} );
     while (1) {
         $len = 0;
@@ -272,7 +272,7 @@ sub write_msg {
       . ( $body || '' );
 
     # 送信
-    $self->{'text'}->insert( 'end', datetime( $self, "Writed.\n" ) )
+    $self->{'text'}->insert( 'end', datetime( $self, "Started writing.\n" ) )
       if ( $self->{'text'} );
 
     my $len = _write( $self, $self->{'soc'}, $msg );
