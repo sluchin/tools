@@ -16,12 +16,7 @@ use Time::HiRes qw/sleep/;
 use Encode qw/encode_utf8 decode_utf8 is_utf8/;
 use JSON qw/decode_json/;
 use Data::Dumper;
-
 use POSIX qw/strftime locale_h/;
-
-#use Expect;
-#use Term::UI;
-#use Term::ReadLine;
 
 use constant TRUE  => 1;
 use constant FALSE => 0;
