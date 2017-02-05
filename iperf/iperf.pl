@@ -231,13 +231,13 @@ sub _bps_from_to {
             && ( $to->{'unit'} =~ m/m/i )
             && ( $space->{'unit'} =~ m/m/i ) )
         {
-            push( @bps, ( $val / 1024 / 1024 ) );
+            push( @bps, ( $val / 1024 / 1024 ) . 'm' );
         }
-        elsif (( $from->{'unit'} =~ m/m/i )
-            && ( $to->{'unit'} =~ m/m/i )
-            && ( $space->{'unit'} =~ m/m/i ) )
+        elsif (( $from->{'unit'} =~ m/k/i )
+            && ( $to->{'unit'} =~ m/k/i )
+            && ( $space->{'unit'} =~ m/k/i ) )
         {
-            push( @bps, ( $val / 1024 ) );
+            push( @bps, ( $val / 1024 ) . 'm' );
         }
         else {
             push( @bps, $val );
@@ -260,6 +260,7 @@ my @sortbps = _sort_bps( @{ $opt{'bandwidth'} } );
 sub _parse_json_udp {
     my ( $bps, $len, $e ) = @_;
     my $sum   = $e->{'sum'};
+    my $cpu   = $e->{'cpu_utilization_percent'};
     my @array = ();
 
     print Dumper $sum if ( $opt{'vorbis'} );
@@ -270,7 +271,10 @@ sub _parse_json_udp {
         $sum->{'seconds'},         $sum->{'bytes'},
         $sum->{'bits_per_second'}, $sum->{'jitter_ms'},
         $sum->{'lost_packets'},    $sum->{'packets'},
-        $sum->{'lost_percent'}
+        $sum->{'lost_percent'},    $cpu->{'host_total'},
+        $cpu->{'host_user'},       $cpu->{'host_system'},
+        $cpu->{'remote_total'},    $cpu->{'remote_user'},
+        $cpu->{'remote_system'}
     );
 }
 
@@ -278,6 +282,7 @@ sub _parse_json_tcp {
     my ( $bps, $len, $e ) = @_;
     my $sum_sent = $e->{'sum_sent'};
     my $sum_recv = $e->{'sum_received'};
+    my $cpu      = $e->{'cpu_utilization_percent'};
     my @array    = ();
 
     print Dumper $sum_sent if ( $opt{'vorbis'} );
@@ -290,7 +295,10 @@ sub _parse_json_tcp {
         $sum_sent->{'bits_per_second'}, $sum_sent->{'retransmits'},
         $sum_recv->{'start'},           $sum_recv->{'end'},
         $sum_recv->{'seconds'},         $sum_recv->{'bytes'},
-        $sum_recv->{'bits_per_second'}
+        $sum_recv->{'bits_per_second'}, $cpu->{'host_total'},
+        $cpu->{'host_user'},            $cpu->{'host_system'},
+        $cpu->{'remote_total'},         $cpu->{'remote_user'},
+        $cpu->{'remote_system'}
     );
 }
 
@@ -362,29 +370,36 @@ my ( %bpsfile, %lostfile ) = ();
 my ( %sbps,     %rbps )     = ();
 my ( %sbpsfile, %rbpsfile ) = ();
 
+my %cpu     = ();
+my %cpufile = ();
 my %csvfile = ();
 
 $bpsfile{'file'}  = 'iperf_bps_chart_' . $process . '.csv';
 $lostfile{'file'} = 'iperf_lost_chart_' . $process . '.csv';
 $sbpsfile{'file'} = 'iperf_sbps_chart_' . $process . '.csv';
 $rbpsfile{'file'} = 'iperf_rbps_chart_' . $process . '.csv';
+$cpufile{'file'}  = 'iperf_remote_cpu_chart_' . $process . '.csv';
 
 if ( $opt{'udp'} ) {
-    $csvfile{'file'} = 'iperf_udp' . $process . '.csv';
+    $csvfile{'file'} = 'iperf_udp_' . $process . '.csv';
     push(
         @{ $csvfile{'data'} },
         'bps,length,start,end,seconds,'
           . 'bytes,bits_per_second,jitter_ms,'
           . 'lost_packets,packets,lost_percent'
+          . 'host_total,host_user,host_system'
+          . 'remote_total,remote_user,remote_system'
     );
 }
 else {
-    $csvfile{'file'} = 'iperf_tcp' . $process . '.csv';
+    $csvfile{'file'} = 'iperf_tcp_' . $process . '.csv';
     push(
         @{ $csvfile{'data'} },
         'bps,length,start,end,seconds,'
           . 'bytes,bits_per_second,retransmits,'
           . 'start,end,seconds,bytes,bits_per_second'
+          . 'host_total,host_user,host_system'
+          . 'remote_total,remote_user,remote_system'
     );
 }
 
@@ -429,6 +444,9 @@ foreach my $bps (@sortbps) {
             $rbps{ $bps->{'bps'} }{$len} =
               $end->{'sum_received'}->{'bits_per_second'};
         }
+        $cpu{ $bps->{'bps'} }{$len} =
+          $end->{'cpu_utilization_percent'}->{'remote_total'};
+
         my $csvdata = _json_to_csv_end( $bps->{'bps'}, $len, $end );
         push( @{ $csvfile{'data'} }, $csvdata );
         print $csvdata. "\n";
@@ -455,6 +473,10 @@ else {
     print "\nrecieved bps chart:\n" if ( $opt{'vorbis'} );
     _output( \%rbpsfile );
 }
+
+@{ $cpufile{'data'} } = _chart( \%cpu );
+print "\nremote cpu chart:\n" if ( $opt{'vorbis'} );
+_output( \%cpufile );
 
 print strftime( "[%Y-%m-%d %H:%M:%S]: end", localtime ), "\n";
 
