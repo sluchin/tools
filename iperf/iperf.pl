@@ -258,7 +258,7 @@ if (   defined( $opt{'from'} )
 my @sortbps = _sort_bps( @{ $opt{'bandwidth'} } );
 
 sub _parse_json_udp {
-    my ( $bps, $len, $e ) = @_;
+    my ( $bps, $len, $cmd, $e ) = @_;
     my $sum   = $e->{'sum'};
     my $cpu   = $e->{'cpu_utilization_percent'};
     my @array = ();
@@ -274,12 +274,12 @@ sub _parse_json_udp {
         $sum->{'lost_percent'},    $cpu->{'host_total'},
         $cpu->{'host_user'},       $cpu->{'host_system'},
         $cpu->{'remote_total'},    $cpu->{'remote_user'},
-        $cpu->{'remote_system'}
+        $cpu->{'remote_system'},   $cmd
     );
 }
 
 sub _parse_json_tcp {
-    my ( $bps, $len, $e ) = @_;
+    my ( $bps, $len, $cmd, $e ) = @_;
     my $sum_sent = $e->{'sum_sent'};
     my $sum_recv = $e->{'sum_received'};
     my $cpu      = $e->{'cpu_utilization_percent'};
@@ -298,19 +298,19 @@ sub _parse_json_tcp {
         $sum_recv->{'bits_per_second'}, $cpu->{'host_total'},
         $cpu->{'host_user'},            $cpu->{'host_system'},
         $cpu->{'remote_total'},         $cpu->{'remote_user'},
-        $cpu->{'remote_system'}
+        $cpu->{'remote_system'},        $cmd
     );
 }
 
 sub _json_to_csv_end {
-    my ( $bps, $len, $e ) = @_;
+    my ( $bps, $len, $cmd, $e ) = @_;
 
     my @e = ();
     if ( $opt{'udp'} ) {
-        @e = _parse_json_udp( $bps, $len, $e );
+        @e = _parse_json_udp( $bps, $len, $cmd, $e );
     }
     else {
-        @e = _parse_json_tcp( $bps, $len, $e );
+        @e = _parse_json_tcp( $bps, $len, $cmd, $e );
     }
     my $csv = '';
     foreach my $value (@e) {
@@ -447,7 +447,7 @@ foreach my $bps (@sortbps) {
         $cpu{ $bps->{'bps'} }{$len} =
           $end->{'cpu_utilization_percent'}->{'remote_total'};
 
-        my $csvdata = _json_to_csv_end( $bps->{'bps'}, $len, $end );
+        my $csvdata = _json_to_csv_end( $bps->{'bps'}, $len, ($exe . $addopt), $end );
         push( @{ $csvfile{'data'} }, $csvdata );
         print $csvdata. "\n";
     }
@@ -493,19 +493,19 @@ __END__
  iperf.pl オプション引数
 
  Options:
-    -f, --file
+    -f, --file filename
         yaml設定ファイル指定
-    -c, --host
+    -c, --host hostname
         サーバのアドレス設定
     -u, --udp
         UDPの指定
-    -b, --bandwidth
+    -b, --bandwidth n[KM]
         帯域幅の設定
-    -l, --length
+    -l, --length n[KM]
         パケット長の設定
-    -t, --time
+    -t, --time n
         時間の設定
-    -n, --bytes
+    -n, --bytes n[KM]
         送信バイト数を指定
     -R, --reverse
         クライアントとサーバを逆にする
@@ -519,11 +519,11 @@ __END__
         MTUの設定
     -S, --tos n
         IPタイプオブサービスの設定
-    --from
-        開始帯域幅
-    --to
-        終了帯域幅
-    --space
+    --from n[MK]
+        開始帯域幅(--toと同時指定)
+    --to n[MK]
+        終了帯域幅(--fromと同時指定)
+    --space n[MK]
         帯域幅の間隔
     --test
         テストモード
