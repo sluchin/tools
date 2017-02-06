@@ -17,6 +17,7 @@ use Encode qw/encode_utf8 decode_utf8 is_utf8/;
 use JSON qw/decode_json/;
 use Data::Dumper;
 use POSIX qw/strftime locale_h/;
+use Expect;
 
 use constant TRUE  => 1;
 use constant FALSE => 0;
@@ -28,14 +29,17 @@ our $VERSION = do { my @r = ( q$Revision: 0.01 $ =~ /\d+/g );
 my $progname = basename($0);
 my $progdir;
 my $process = $$;
-my $exe     = 'iperf3';
+my $exe     = 'iperf';
 my $options = '';
+my $jsondir = 'iperf_json_' . $process;
+my $csvdir  = 'iperf_csv_' . $process;
+my $prompt  = '$';
+my $timeout = 10;
 
 BEGIN {
     $progdir = dirname( readlink($0) || $0 );
     push( @INC, catfile( $progdir, 'lib' ) );
 }
-my $jsondir = 'iperf_json_' . $process;
 
 use YAML::Tiny;
 
@@ -49,6 +53,8 @@ my %stathash = (
 my %opt = (
     'file'         => '',
     'host'         => 'localhost',
+    'user'         => undef,
+    'pass'         => undef,
     'udp'          => 0,
     'bandwidth'    => undef,
     'length'       => undef,
@@ -94,7 +100,9 @@ Getopt::Long::Configure(
 );
 GetOptions(
     'file|f=s'      => \$opt{'file'},
-    'host|c'        => \$opt{'host'},
+    'host|c=s'      => \$opt{'host'},
+    'user=s'        => \$opt{'user'},
+    'pass=s'        => \$opt{'pass'},
     'udp|u'         => \$opt{'udp'},
     'bandwidth|b=s' => \@{ $opt{'bandwidth'} },
     'length|l=s'    => \@{ $opt{'length'} },
@@ -164,6 +172,35 @@ foreach my $dir (@path) {
 print "no iperf\n" and exit( $stathash{'EX_NG'} ) unless ($exist);
 
 $opt{'bytes'} = $opt{'length'} if ( $opt{'test'} );
+
+sub _login {
+    my ( $exp, $pass, $to ) = @_;
+
+    print 'timeout=' . ( defined $to ? $to : 'undef' ), "\n";
+    $exp->expect(
+        $to,
+        [
+            qr/\(yes\/no\)\?/ => sub {
+                my $self = shift;
+                $self->send("yes\n");
+                exp_continue;
+              }
+        ],
+        [
+            qr/word:/ => sub {
+                my $self = shift;
+                $self->send( $pass . "\n" );
+                exp_continue;
+              }
+        ],
+        [
+            qr/Permission denied/ => sub {
+                exit;
+              }
+        ],
+        $prompt
+    );
+}
 
 sub _convert_bytes {
     my ($bytes) = @_;
@@ -320,6 +357,45 @@ sub _json_to_csv_end {
     return $csv;
 }
 
+sub _csv_to_hash_udp {
+    my @d    = @_;
+    my %hash = (
+        'time'      => $d[0]  || '',
+        'server'    => $d[1]  || '',
+        'sport'     => $d[2]  || '',
+        'client'    => $d[3]  || '',
+        'cport'     => $d[4]  || '',
+        'unclear1'  => $d[5]  || '',
+        'interval'  => $d[6]  || '',
+        'transfer'  => $d[7]  || '',
+        'bandwidth' => $d[8]  || '',
+        'jitter'    => $d[9]  || '',
+        'lost'      => $d[10] || '',
+        'total'     => $d[11] || '',
+        'percent'   => $d[12] || '',
+        'unclear2'  => $d[13] || '',
+    );
+
+    return %hash;
+}
+
+sub _csv_to_hash_tcp {
+    my @d    = @_;
+    my %hash = (
+        'time'      => $d[0] || '',
+        'server'    => $d[1] || '',
+        'sport'     => $d[2] || '',
+        'client'    => $d[3] || '',
+        'cport'     => $d[4] || '',
+        'unclear1'  => $d[5] || '',
+        'interval'  => $d[6] || '',
+        'transfer'  => $d[7] || '',
+        'bandwidth' => $d[8] || '',
+    );
+
+    return %hash;
+}
+
 sub _chart {
     my ($args) = @_;
     my $string = '';
@@ -352,131 +428,302 @@ sub _output {
 
 print strftime( "[%Y-%m-%d %H:%M:%S]: begin", localtime ), "\n";
 
-$options .= ' -u'                     if ( $opt{'udp'} );
-$options .= ' -t ' . $opt{'time'}     if ( $opt{'time'} );
-$options .= ' -R'                     if ( $opt{'reverse'} );
-$options .= ' --json';
-$options .= ' -i ' . $opt{'interval'};
-$options .= ' -c ' . $opt{'host'};
-$options .= ' -A ' . $opt{'affinity'} if ( defined( $opt{'affinity'} ) );
-$options .= ' -w ' . $opt{'window'}   if ( defined( $opt{'window'} ) );
-$options .= ' -M ' . $opt{'set-mss'}  if ( defined( $opt{'set-mss'} ) );
-$options .= ' -S ' . $opt{'tos'}      if ( defined( $opt{'tos'} ) );
-$options .= ' --get-server-output';
+sub iperf3 {
+    $options .= ' -u'                     if ( $opt{'udp'} );
+    $options .= ' -t ' . $opt{'time'}     if ( $opt{'time'} );
+    $options .= ' -R'                     if ( $opt{'reverse'} );
+    $options .= ' --json';
+    $options .= ' -i ' . $opt{'interval'};
+    $options .= ' -c ' . $opt{'host'};
+    $options .= ' -A ' . $opt{'affinity'} if ( defined( $opt{'affinity'} ) );
+    $options .= ' -w ' . $opt{'window'}   if ( defined( $opt{'window'} ) );
+    $options .= ' -M ' . $opt{'set-mss'}  if ( defined( $opt{'set-mss'} ) );
+    $options .= ' -S ' . $opt{'tos'}      if ( defined( $opt{'tos'} ) );
+    $options .= ' --get-server-output';
 
-my ( %bps,     %lost )     = ();
-my ( %bpsfile, %lostfile ) = ();
+    my ( %bps,     %lost )     = ();
+    my ( %bpsfile, %lostfile ) = ();
 
-my ( %sbps,     %rbps )     = ();
-my ( %sbpsfile, %rbpsfile ) = ();
+    my ( %sbps,     %rbps )     = ();
+    my ( %sbpsfile, %rbpsfile ) = ();
 
-my %cpu     = ();
-my %cpufile = ();
-my %csvfile = ();
+    my %cpu     = ();
+    my %cpufile = ();
+    my %csvfile = ();
 
-$bpsfile{'file'}  = 'iperf_bps_chart_' . $process . '.csv';
-$lostfile{'file'} = 'iperf_lost_chart_' . $process . '.csv';
-$sbpsfile{'file'} = 'iperf_sbps_chart_' . $process . '.csv';
-$rbpsfile{'file'} = 'iperf_rbps_chart_' . $process . '.csv';
-$cpufile{'file'}  = 'iperf_remote_cpu_chart_' . $process . '.csv';
+    $bpsfile{'file'}  = 'iperf_bps_chart_' . $process . '.csv';
+    $lostfile{'file'} = 'iperf_lost_chart_' . $process . '.csv';
+    $sbpsfile{'file'} = 'iperf_sbps_chart_' . $process . '.csv';
+    $rbpsfile{'file'} = 'iperf_rbps_chart_' . $process . '.csv';
+    $cpufile{'file'}  = 'iperf_remote_cpu_chart_' . $process . '.csv';
 
-if ( $opt{'udp'} ) {
-    $csvfile{'file'} = 'iperf_udp_' . $process . '.csv';
-    push(
-        @{ $csvfile{'data'} },
-        'bps,length,start,end,seconds,'
-          . 'bytes,bits_per_second,jitter_ms,'
-          . 'lost_packets,packets,lost_percent'
-          . 'host_total,host_user,host_system'
-          . 'remote_total,remote_user,remote_system'
-    );
-}
-else {
-    $csvfile{'file'} = 'iperf_tcp_' . $process . '.csv';
-    push(
-        @{ $csvfile{'data'} },
-        'bps,length,start,end,seconds,'
-          . 'bytes,bits_per_second,retransmits,'
-          . 'start,end,seconds,bytes,bits_per_second'
-          . 'host_total,host_user,host_system'
-          . 'remote_total,remote_user,remote_system'
-    );
-}
+    if ( $opt{'udp'} ) {
+        $csvfile{'file'} = 'iperf_udp_' . $process . '.csv';
+        push(
+            @{ $csvfile{'data'} },
+            'bps,length,start,end,seconds,'
+              . 'bytes,bits_per_second,jitter_ms,'
+              . 'lost_packets,packets,lost_percent,'
+              . 'host_total,host_user,host_system,'
+              . 'remote_total,remote_user,remote_system,command'
+        );
+    }
+    else {
+        $csvfile{'file'} = 'iperf_tcp_' . $process . '.csv';
+        push(
+            @{ $csvfile{'data'} },
+            'bps,length,start,end,seconds,'
+              . 'bytes,bits_per_second,retransmits,'
+              . 'start,end,seconds,bytes,bits_per_second,'
+              . 'host_total,host_user,host_system,'
+              . 'remote_total,remote_user,remote_system,command'
+        );
+    }
 
-$jsondir .= $opt{'udp'} ? '_udp' : '_tcp';
+    $csvdir .= $opt{'udp'} ? '_udp' : '_tcp';
 
-foreach my $bps (@sortbps) {
-    print $bps->{'bps'} . "\n" if ( $opt{'debug'} );
+    foreach my $bps (@sortbps) {
+        print $bps->{'bps'} . "\n" if ( $opt{'debug'} );
 
-    foreach my $len ( sort { $b <=> $a } @{ $opt{'length'} } ) {
-        print $len . "\n" if ( $opt{'debug'} );
+        foreach my $len ( sort { $b <=> $a } @{ $opt{'length'} } ) {
+            print $len . "\n" if ( $opt{'debug'} );
 
-        my $addopt  = $options;
-        my $logfile = catfile( $jsondir,
-            'iperf_' . ( $bps->{'bps'} || '' ) . '_' . $len . '_' . '.json' );
-        $addopt .= ' -b ' . ( $bps->{'bps'} || '' );
-        $addopt .= ' -l ' . $len;
-        $addopt .= ' --logfile ' . $logfile;
-        mkpath($jsondir) unless ( -d $jsondir );
+            my $addopt  = $options;
+            my $logfile = catfile( $jsondir,
+                    'iperf_'
+                  . ( $bps->{'bps'} || '' ) . '_'
+                  . $len . '_'
+                  . '.json' );
+            $addopt .= ' -b ' . ( $bps->{'bps'} || '' );
+            $addopt .= ' -l ' . $len;
+            $addopt .= ' --logfile ' . $logfile;
+            mkpath($jsondir) unless ( -d $jsondir );
 
-        print "command line:\n" . $exe . $addopt . "\n";
-        system( $exe . $addopt );
+            print "command line:\n" . $exe . $addopt . "\n";
+            system( $exe . $addopt );
 
-        open my $in, '<', $logfile
-          or die 'open error: ' . $logfile . ': ', $!;
-        my $content = do { local $/ = undef; <$in> };
-        close $in;
+            open my $in, '<', $logfile
+              or die 'open error: ' . $logfile . ': ', $!;
+            my $content = do { local $/ = undef; <$in> };
+            close $in;
 
-        my $json = decode_json($content);
-        print Dumper $json if ( $opt{'debug'} );
+            my $json = decode_json($content);
+            print Dumper $json if ( $opt{'debug'} );
 
-        my $start     = $json->{'start'};
-        my $end       = $json->{'end'};
-        my $intervals = $json->{'intervals'};
+            my $start     = $json->{'start'};
+            my $end       = $json->{'end'};
+            my $intervals = $json->{'intervals'};
 
-        if ( $opt{'udp'} ) {
-            $bps{ $bps->{'bps'} }{$len}  = $end->{'sum'}->{'bits_per_second'};
-            $lost{ $bps->{'bps'} }{$len} = $end->{'sum'}->{'lost_percent'};
+            if ( $opt{'udp'} ) {
+                $bps{ $bps->{'bps'} }{$len} =
+                  $end->{'sum'}->{'bits_per_second'};
+                $lost{ $bps->{'bps'} }{$len} = $end->{'sum'}->{'lost_percent'};
+            }
+            else {
+                $sbps{ $bps->{'bps'} }{$len} =
+                  $end->{'sum_sent'}->{'bits_per_second'};
+                $rbps{ $bps->{'bps'} }{$len} =
+                  $end->{'sum_received'}->{'bits_per_second'};
+            }
+            $cpu{ $bps->{'bps'} }{$len} =
+              $end->{'cpu_utilization_percent'}->{'remote_total'};
+
+            my $csvdata =
+              _json_to_csv_end( $bps->{'bps'}, $len, ( $exe . $addopt ), $end );
+            push( @{ $csvfile{'data'} }, $csvdata );
+            print $csvdata. "\n";
         }
-        else {
-            $sbps{ $bps->{'bps'} }{$len} =
-              $end->{'sum_sent'}->{'bits_per_second'};
-            $rbps{ $bps->{'bps'} }{$len} =
-              $end->{'sum_received'}->{'bits_per_second'};
-        }
-        $cpu{ $bps->{'bps'} }{$len} =
-          $end->{'cpu_utilization_percent'}->{'remote_total'};
+    }
 
-        my $csvdata = _json_to_csv_end( $bps->{'bps'}, $len, ($exe . $addopt), $end );
-        push( @{ $csvfile{'data'} }, $csvdata );
-        print $csvdata. "\n";
+    print "\n" if ( $opt{'vorbis'} );
+    print 'csv:' . "\n" if ( $opt{'vorbis'} );
+    _output( \%csvfile );
+
+    if ( $opt{'udp'} ) {
+        @{ $bpsfile{'data'} }  = _chart( \%bps );
+        @{ $lostfile{'data'} } = _chart( \%lost );
+        print "\nbps chart:\n" if ( $opt{'vorbis'} );
+        _output( \%bpsfile );
+        print "\nlost packet percent chart:\n" if ( $opt{'vorbis'} );
+        _output( \%lostfile );
+    }
+    else {
+        @{ $sbpsfile{'data'} } = _chart( \%sbps );
+        @{ $rbpsfile{'data'} } = _chart( \%rbps );
+        print "\nsent bps chart:\n" if ( $opt{'vorbis'} );
+        _output( \%sbpsfile );
+        print "\nrecieved bps chart:\n" if ( $opt{'vorbis'} );
+        _output( \%rbpsfile );
+    }
+
+    @{ $cpufile{'data'} } = _chart( \%cpu );
+    print "\nremote cpu chart:\n" if ( $opt{'vorbis'} );
+    _output( \%cpufile );
+}
+
+sub server {
+    my ($bps, $len) = @_;
+
+    my $cmd = 'iperf -s';
+    $cmd .= ' -u' if ( $opt{'udp'} );
+    $cmd .= ' -l ' . $len if ($len);
+    $cmd .= ' -y c';
+
+    my $logfile = 'iperf_server_' .$bps .'_'.$len.'_'.$process.'.csv';
+    my $exp = Expect->new();
+    $exp->spawn( 'ssh -l ' . $opt{'user'} . ' ' . $opt{'host'} )
+      or die 'spawn error ', $!;
+    _login( $exp, $opt{'pass'}, $timeout );
+
+    open my $save, '>&', STDOUT    # 保存
+        or die 'dup error: stdout: ', $!;
+    open my $out, '>', $logfile    # ファイルに出力
+         or die 'open error: ' . $logfile . ': ', $!;
+    binmode $out, ':unix:encoding(utf8)';
+    open STDOUT, '>&', $out        # コピー
+        or die 'dup error: ' . $logfile . ': ', $!;
+
+    $exp->send($cmd . "\n");
+    $exp->expect( $timeout, $prompt );
+
+    $exp->send("exit\n");
+    $exp->expect( $timeout, $prompt );
+
+    open my $in, '<', $logfile
+    or die 'open error: ' . $logfile . ': ', $!;
+    my @content = <$in>;
+    close $in;
+
+    close($out);
+
+    # 標準出力を戻す
+    open STDOUT, '>&', $save
+      or die 'dup error: save: ', $!;
+
+    my $csvdata = pop(@content);
+    chop($csvdata);
+    print $csvdata . "\n" if ( $opt{'debug'} );
+    my @data = split /,/, $csvdata;
+    print "@data\n";
+}
+
+sub iperf2 {
+
+    $options .= ' -u'                    if ( $opt{'udp'} );
+    $options .= ' -t ' . $opt{'time'}    if ( $opt{'time'} );
+    $options .= ' -i ' . $opt{'interval'};
+    $options .= ' -c ' . $opt{'host'};
+    $options .= ' -w ' . $opt{'window'}  if ( defined( $opt{'window'} ) );
+    $options .= ' -M ' . $opt{'set-mss'} if ( defined( $opt{'set-mss'} ) );
+    $options .= ' -y c';
+
+    my ( %bps,     %lost )     = ();
+    my ( %bpsfile, %lostfile ) = ();
+    my %csvfile = ();
+
+    $bpsfile{'file'}  = 'iperf_bps_chart_' . $process . '.csv';
+    $lostfile{'file'} = 'iperf_lost_chart_' . $process . '.csv';
+
+    if ( $opt{'udp'} ) {
+        $csvfile{'file'} = 'iperf_udp_' . $process . '.csv';
+        push(
+            @{ $csvfile{'data'} },
+            'bps,length,time,server,sport,'
+              . 'client,cport,,'
+              . 'interval,transfer,bandwidth,jitter,'
+              . 'lost,total,lost_percent,'
+        );
+    }
+    else {
+        $csvfile{'file'} = 'iperf_tcp_' . $process . '.csv';
+        push(
+            @{ $csvfile{'data'} },
+            'bps,length,time,server,sport,'
+              . 'client,cport,,'
+              . 'interval,transfer,bandwidth,'
+        );
+    }
+
+    $jsondir .= $opt{'udp'} ? '_udp' : '_tcp';
+
+    foreach my $bps (@sortbps) {
+        print $bps->{'bps'} . "\n" if ( $opt{'debug'} );
+
+        foreach my $len ( sort { $b <=> $a } @{ $opt{'length'} } ) {
+            print $len . "\n" if ( $opt{'debug'} );
+
+            my $addopt  = $options;
+            my $logfile = catfile( $csvdir,
+                    'iperf_'
+                  . ( $bps->{'bps'} || '' ) . '_'
+                  . $len . '_'
+                  . '.csv' );
+            $addopt .= ' -b ' . ( $bps->{'bps'} || '' );
+            $addopt .= ' -l ' . $len;
+            $addopt .= ' --output ' . $logfile;
+            mkpath($csvdir) unless ( -d $csvdir );
+
+            print "command line:\n" . $exe . $addopt . "\n";
+            open my $save, '>&', STDOUT    # 保存
+              or die 'dup error: stdout: ', $!;
+            open my $out, '>', $logfile    # ファイルに出力
+              or die 'open error: ' . $logfile . ': ', $!;
+            binmode $out, ':unix:encoding(utf8)';
+            open STDOUT, '>&', $out        # コピー
+              or die 'dup error: ' . $logfile . ': ', $!;
+
+            system( $exe . $addopt );
+
+            open my $in, '<', $logfile
+              or die 'open error: ' . $logfile . ': ', $!;
+            my @content = <$in>;
+            close $in;
+
+            close($out);
+
+            # 標準出力を戻す
+            open STDOUT, '>&', $save
+              or die 'dup error: save: ', $!;
+
+            my $csvdata = pop(@content);
+            chop($csvdata);
+            print $csvdata . "\n" if ( $opt{'debug'} );
+            my @data = split /,/, $csvdata;
+
+            my %csv = ();
+            if ( $opt{'udp'} ) {
+                %csv                         = _csv_to_hash_udp(@data);
+                $bps{ $bps->{'bps'} }{$len}  = $csv{'bandwidth'};
+                $lost{ $bps->{'bps'} }{$len} = $csv{'percent'};
+            }
+            else {
+                %csv = _csv_to_hash_tcp(@data);
+                $bps{ $bps->{'bps'} }{$len} = $csv{'bandwidth'};
+            }
+            $csvdata = $bps->{'bps'} . ',' . $len . ',' . $csvdata;
+            push( @{ $csvfile{'data'} }, $csvdata );
+            print $csvdata. "\n";
+        }
+    }
+
+    print "\n" if ( $opt{'vorbis'} );
+    print 'csv:' . "\n" if ( $opt{'vorbis'} );
+    _output( \%csvfile );
+
+    @{ $bpsfile{'data'} } = _chart( \%bps );
+    print "\nbps chart:\n" if ( $opt{'vorbis'} );
+    _output( \%bpsfile );
+
+    if ( $opt{'udp'} ) {
+        @{ $lostfile{'data'} } = _chart( \%lost );
+        print "\nlost packet percent chart:\n" if ( $opt{'vorbis'} );
+        _output( \%lostfile );
     }
 }
 
-print "\n" if ( $opt{'vorbis'} );
-print 'csv:' . "\n" if ( $opt{'vorbis'} );
-_output( \%csvfile );
-
-if ( $opt{'udp'} ) {
-    @{ $bpsfile{'data'} }  = _chart( \%bps );
-    @{ $lostfile{'data'} } = _chart( \%lost );
-    print "\nbps chart:\n" if ( $opt{'vorbis'} );
-    _output( \%bpsfile );
-    print "\nlost packet percent chart:\n" if ( $opt{'vorbis'} );
-    _output( \%lostfile );
-}
-else {
-    @{ $sbpsfile{'data'} } = _chart( \%sbps );
-    @{ $rbpsfile{'data'} } = _chart( \%rbps );
-    print "\nsent bps chart:\n" if ( $opt{'vorbis'} );
-    _output( \%sbpsfile );
-    print "\nrecieved bps chart:\n" if ( $opt{'vorbis'} );
-    _output( \%rbpsfile );
-}
-
-@{ $cpufile{'data'} } = _chart( \%cpu );
-print "\nremote cpu chart:\n" if ( $opt{'vorbis'} );
-_output( \%cpufile );
+# サーバ
+# iperf -s -u -l 1500 -y c > filename.csv
+iperf2();
 
 print strftime( "[%Y-%m-%d %H:%M:%S]: end", localtime ), "\n";
 
