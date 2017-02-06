@@ -562,35 +562,35 @@ sub iperf3 {
 }
 
 sub server {
-    my ($bps, $len) = @_;
+    my ( $bps, $len ) = @_;
 
     my $cmd = 'iperf -s';
-    $cmd .= ' -u' if ( $opt{'udp'} );
+    $cmd .= ' -u'         if ( $opt{'udp'} );
     $cmd .= ' -l ' . $len if ($len);
     $cmd .= ' -y c';
 
-    my $logfile = 'iperf_server_' .$bps .'_'.$len.'_'.$process.'.csv';
-    my $exp = Expect->new();
+    my $logfile = 'iperf_server_' . $bps . '_' . $len . '_' . $process . '.csv';
+    my $exp     = Expect->new();
     $exp->spawn( 'ssh -l ' . $opt{'user'} . ' ' . $opt{'host'} )
       or die 'spawn error ', $!;
     _login( $exp, $opt{'pass'}, $timeout );
 
     open my $save, '>&', STDOUT    # 保存
-        or die 'dup error: stdout: ', $!;
+      or die 'dup error: stdout: ', $!;
     open my $out, '>', $logfile    # ファイルに出力
-         or die 'open error: ' . $logfile . ': ', $!;
+      or die 'open error: ' . $logfile . ': ', $!;
     binmode $out, ':unix:encoding(utf8)';
     open STDOUT, '>&', $out        # コピー
-        or die 'dup error: ' . $logfile . ': ', $!;
+      or die 'dup error: ' . $logfile . ': ', $!;
 
-    $exp->send($cmd . "\n");
+    $exp->send( $cmd . "\n" );
     $exp->expect( $timeout, $prompt );
 
     $exp->send("exit\n");
     $exp->expect( $timeout, $prompt );
 
     open my $in, '<', $logfile
-    or die 'open error: ' . $logfile . ': ', $!;
+      or die 'open error: ' . $logfile . ': ', $!;
     my @content = <$in>;
     close $in;
 
@@ -631,7 +631,7 @@ sub iperf2 {
             'bps,length,time,server,sport,'
               . 'client,cport,,'
               . 'interval,transfer,bandwidth,jitter,'
-              . 'lost,total,lost_percent,'
+              . 'lost,total,lost_percent,,command'
         );
     }
     else {
@@ -640,7 +640,7 @@ sub iperf2 {
             @{ $csvfile{'data'} },
             'bps,length,time,server,sport,'
               . 'client,cport,,'
-              . 'interval,transfer,bandwidth,'
+              . 'interval,transfer,bandwidth,,command'
         );
     }
 
@@ -700,7 +700,12 @@ sub iperf2 {
                 %csv = _csv_to_hash_tcp(@data);
                 $bps{ $bps->{'bps'} }{$len} = $csv{'bandwidth'};
             }
-            $csvdata = $bps->{'bps'} . ',' . $len . ',' . $csvdata;
+            $csvdata =
+                $bps->{'bps'} . ','
+              . $len . ','
+              . $csvdata . ',' . '"'
+              . $exe
+              . $addopt . '"';
             push( @{ $csvfile{'data'} }, $csvdata );
             print $csvdata. "\n";
         }
