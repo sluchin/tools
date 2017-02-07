@@ -17,7 +17,6 @@ use Encode qw/encode_utf8 decode_utf8 is_utf8/;
 use JSON qw/decode_json/;
 use Data::Dumper;
 use POSIX qw/strftime locale_h/;
-use Expect;
 
 use constant TRUE  => 1;
 use constant FALSE => 0;
@@ -33,8 +32,6 @@ my $exe     = 'iperf';
 my $options = '';
 my $jsondir = 'iperf_json_' . $process;
 my $csvdir  = 'iperf_csv_' . $process;
-my $prompt  = '$';
-my $timeout = 10;
 
 BEGIN {
     $progdir = dirname( readlink($0) || $0 );
@@ -172,35 +169,6 @@ foreach my $dir (@path) {
 print "no iperf\n" and exit( $stathash{'EX_NG'} ) unless ($exist);
 
 $opt{'bytes'} = $opt{'length'} if ( $opt{'test'} );
-
-sub _login {
-    my ( $exp, $pass, $to ) = @_;
-
-    print 'timeout=' . ( defined $to ? $to : 'undef' ), "\n";
-    $exp->expect(
-        $to,
-        [
-            qr/\(yes\/no\)\?/ => sub {
-                my $self = shift;
-                $self->send("yes\n");
-                exp_continue;
-              }
-        ],
-        [
-            qr/word:/ => sub {
-                my $self = shift;
-                $self->send( $pass . "\n" );
-                exp_continue;
-              }
-        ],
-        [
-            qr/Permission denied/ => sub {
-                exit;
-              }
-        ],
-        $prompt
-    );
-}
 
 sub _convert_bytes {
     my ($bytes) = @_;
@@ -429,6 +397,7 @@ sub _output {
 print strftime( "[%Y-%m-%d %H:%M:%S]: begin", localtime ), "\n";
 
 sub iperf3 {
+
     $options .= ' -u'                     if ( $opt{'udp'} );
     $options .= ' -t ' . $opt{'time'}     if ( $opt{'time'} );
     $options .= ' -R'                     if ( $opt{'reverse'} );
@@ -492,7 +461,7 @@ sub iperf3 {
             my $logfile = catfile( $jsondir,
                     'iperf_'
                   . ( $bps->{'bps'} || '' ) . '_'
-                  . $len . '_'
+                  . $len . '_' . $opt{'time'} . 's'
                   . '.json' );
             $addopt .= ' -b ' . ( $bps->{'bps'} || '' );
             $addopt .= ' -l ' . $len;
@@ -532,6 +501,7 @@ sub iperf3 {
               _json_to_csv_end( $bps->{'bps'}, $len, ( $exe . $addopt ), $end );
             push( @{ $csvfile{'data'} }, $csvdata );
             print $csvdata. "\n";
+            sleep 1;
         }
     }
 
@@ -559,52 +529,6 @@ sub iperf3 {
     @{ $cpufile{'data'} } = _chart( \%cpu );
     print "\nremote cpu chart:\n" if ( $opt{'vorbis'} );
     _output( \%cpufile );
-}
-
-sub server {
-    my ( $bps, $len ) = @_;
-
-    my $cmd = 'iperf -s';
-    $cmd .= ' -u'         if ( $opt{'udp'} );
-    $cmd .= ' -l ' . $len if ($len);
-    $cmd .= ' -y c';
-
-    my $logfile = 'iperf_server_' . $bps . '_' . $len . '_' . $process . '.csv';
-    my $exp     = Expect->new();
-    $exp->spawn( 'ssh -l ' . $opt{'user'} . ' ' . $opt{'host'} )
-      or die 'spawn error ', $!;
-    _login( $exp, $opt{'pass'}, $timeout );
-
-    open my $save, '>&', STDOUT    # 保存
-      or die 'dup error: stdout: ', $!;
-    open my $out, '>', $logfile    # ファイルに出力
-      or die 'open error: ' . $logfile . ': ', $!;
-    binmode $out, ':unix:encoding(utf8)';
-    open STDOUT, '>&', $out        # コピー
-      or die 'dup error: ' . $logfile . ': ', $!;
-
-    $exp->send( $cmd . "\n" );
-    $exp->expect( $timeout, $prompt );
-
-    $exp->send("exit\n");
-    $exp->expect( $timeout, $prompt );
-
-    open my $in, '<', $logfile
-      or die 'open error: ' . $logfile . ': ', $!;
-    my @content = <$in>;
-    close $in;
-
-    close($out);
-
-    # 標準出力を戻す
-    open STDOUT, '>&', $save
-      or die 'dup error: save: ', $!;
-
-    my $csvdata = pop(@content);
-    chop($csvdata);
-    print $csvdata . "\n" if ( $opt{'debug'} );
-    my @data = split /,/, $csvdata;
-    print "@data\n";
 }
 
 sub iperf2 {
@@ -656,7 +580,7 @@ sub iperf2 {
             my $logfile = catfile( $csvdir,
                     'iperf_'
                   . ( $bps->{'bps'} || '' ) . '_'
-                  . $len . '_'
+                  . $len . '_' . $opt{'time'} . 's'
                   . '.csv' );
             $addopt .= ' -b ' . ( $bps->{'bps'} || '' );
             $addopt .= ' -l ' . $len;
@@ -685,8 +609,8 @@ sub iperf2 {
             open STDOUT, '>&', $save
               or die 'dup error: save: ', $!;
 
-            my $csvdata = pop(@content);
-            chop($csvdata);
+            my $csvdata = pop(@content) || '';
+            chop($csvdata) unless ($csvdata eq '');
             print $csvdata . "\n" if ( $opt{'debug'} );
             my @data = split /,/, $csvdata;
 
@@ -708,6 +632,8 @@ sub iperf2 {
               . $addopt . '"';
             push( @{ $csvfile{'data'} }, $csvdata );
             print $csvdata. "\n";
+
+            sleep 1;
         }
     }
 
