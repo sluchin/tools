@@ -398,16 +398,17 @@ print strftime( "[%Y-%m-%d %H:%M:%S]: begin", localtime ), "\n";
 
 sub iperf3 {
 
-    $options .= ' -u'                     if ( $opt{'udp'} );
-    $options .= ' -t ' . $opt{'time'}     if ( $opt{'time'} );
-    $options .= ' -R'                     if ( $opt{'reverse'} );
+    $jsondir .= '_' . ${'time'} . 's';
+    $options .= ' -u' if ( $opt{'udp'} );
+    $options .= ' -t ' . $opt{'time'} if ( $opt{'time'} );
+    $options .= ' -R' if ( $opt{'reverse'} );
     $options .= ' --json';
     $options .= ' -i ' . $opt{'interval'};
     $options .= ' -c ' . $opt{'host'};
     $options .= ' -A ' . $opt{'affinity'} if ( defined( $opt{'affinity'} ) );
-    $options .= ' -w ' . $opt{'window'}   if ( defined( $opt{'window'} ) );
-    $options .= ' -M ' . $opt{'set-mss'}  if ( defined( $opt{'set-mss'} ) );
-    $options .= ' -S ' . $opt{'tos'}      if ( defined( $opt{'tos'} ) );
+    $options .= ' -w ' . $opt{'window'} if ( defined( $opt{'window'} ) );
+    $options .= ' -M ' . $opt{'set-mss'} if ( defined( $opt{'set-mss'} ) );
+    $options .= ' -S ' . $opt{'tos'} if ( defined( $opt{'tos'} ) );
     $options .= ' --get-server-output';
 
     my ( %bps,     %lost )     = ();
@@ -420,14 +421,20 @@ sub iperf3 {
     my %cpufile = ();
     my %csvfile = ();
 
-    $bpsfile{'file'}  = 'iperf_bps_chart_' . $process . '.csv';
-    $lostfile{'file'} = 'iperf_lost_chart_' . $process . '.csv';
-    $sbpsfile{'file'} = 'iperf_sbps_chart_' . $process . '.csv';
-    $rbpsfile{'file'} = 'iperf_rbps_chart_' . $process . '.csv';
-    $cpufile{'file'}  = 'iperf_remote_cpu_chart_' . $process . '.csv';
+    $bpsfile{'file'} =
+      'iperf_bps_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
+    $lostfile{'file'} =
+      'iperf_lost_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
+    $sbpsfile{'file'} =
+      'iperf_sbps_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
+    $rbpsfile{'file'} =
+      'iperf_rbps_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
+    $cpufile{'file'} =
+      'iperf_remote_cpu_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
 
     if ( $opt{'udp'} ) {
-        $csvfile{'file'} = 'iperf_udp_' . $process . '.csv';
+        $csvfile{'file'} =
+          'iperf_udp_' . $process . '_' . ${'time'} . 's' . '.csv';
         push(
             @{ $csvfile{'data'} },
             'bps,length,start,end,seconds,'
@@ -438,7 +445,8 @@ sub iperf3 {
         );
     }
     else {
-        $csvfile{'file'} = 'iperf_tcp_' . $process . '.csv';
+        $csvfile{'file'} =
+          'iperf_tcp_' . $process . '_' . ${'time'} . 's' . '.csv';
         push(
             @{ $csvfile{'data'} },
             'bps,length,start,end,seconds,'
@@ -461,7 +469,8 @@ sub iperf3 {
             my $logfile = catfile( $jsondir,
                     'iperf_'
                   . ( $bps->{'bps'} || '' ) . '_'
-                  . $len . '_' . $opt{'time'} . 's'
+                  . $len . '_'
+                  . $opt{'time'} . 's'
                   . '.json' );
             $addopt .= ' -b ' . ( $bps->{'bps'} || '' );
             $addopt .= ' -l ' . $len;
@@ -533,11 +542,12 @@ sub iperf3 {
 
 sub iperf2 {
 
-    $options .= ' -u'                    if ( $opt{'udp'} );
-    $options .= ' -t ' . $opt{'time'}    if ( $opt{'time'} );
+    $csvdir  .= '_' . ${'time'} . 's';
+    $options .= ' -u' if ( $opt{'udp'} );
+    $options .= ' -t ' . $opt{'time'} if ( $opt{'time'} );
     $options .= ' -i ' . $opt{'interval'};
     $options .= ' -c ' . $opt{'host'};
-    $options .= ' -w ' . $opt{'window'}  if ( defined( $opt{'window'} ) );
+    $options .= ' -w ' . $opt{'window'} if ( defined( $opt{'window'} ) );
     $options .= ' -M ' . $opt{'set-mss'} if ( defined( $opt{'set-mss'} ) );
     $options .= ' -y c';
 
@@ -545,11 +555,14 @@ sub iperf2 {
     my ( %bpsfile, %lostfile ) = ();
     my %csvfile = ();
 
-    $bpsfile{'file'}  = 'iperf_bps_chart_' . $process . '.csv';
-    $lostfile{'file'} = 'iperf_lost_chart_' . $process . '.csv';
+    $bpsfile{'file'} =
+      'iperf_bps_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
+    $lostfile{'file'} =
+      'iperf_lost_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
 
     if ( $opt{'udp'} ) {
-        $csvfile{'file'} = 'iperf_udp_' . $process . '.csv';
+        $csvfile{'file'} =
+          'iperf_udp_' . $process . '_' . ${'time'} . 's' . '.csv';
         push(
             @{ $csvfile{'data'} },
             'bps,length,time,server,sport,'
@@ -559,7 +572,8 @@ sub iperf2 {
         );
     }
     else {
-        $csvfile{'file'} = 'iperf_tcp_' . $process . '.csv';
+        $csvfile{'file'} =
+          'iperf_tcp_' . $process . '_' . ${'time'} . 's' . '.csv';
         push(
             @{ $csvfile{'data'} },
             'bps,length,time,server,sport,'
@@ -580,7 +594,8 @@ sub iperf2 {
             my $logfile = catfile( $csvdir,
                     'iperf_'
                   . ( $bps->{'bps'} || '' ) . '_'
-                  . $len . '_' . $opt{'time'} . 's'
+                  . $len . '_'
+                  . $opt{'time'} . 's'
                   . '.csv' );
             $addopt .= ' -b ' . ( $bps->{'bps'} || '' );
             $addopt .= ' -l ' . $len;
@@ -610,7 +625,7 @@ sub iperf2 {
               or die 'dup error: save: ', $!;
 
             my $csvdata = pop(@content) || '';
-            chop($csvdata) unless ($csvdata eq '');
+            chop($csvdata) unless ( $csvdata eq '' );
             print $csvdata . "\n" if ( $opt{'debug'} );
             my @data = split /,/, $csvdata;
 
@@ -633,7 +648,7 @@ sub iperf2 {
             push( @{ $csvfile{'data'} }, $csvdata );
             print $csvdata. "\n";
 
-            sleep 1;
+            sleep 3;
         }
     }
 
