@@ -398,7 +398,7 @@ print strftime( "[%Y-%m-%d %H:%M:%S]: begin", localtime ), "\n";
 
 sub iperf3 {
 
-    $jsondir .= '_' . ${'time'} . 's';
+    $jsondir .= '_' . $opt{'time'} . 's';
     $options .= ' -u' if ( $opt{'udp'} );
     $options .= ' -t ' . $opt{'time'} if ( $opt{'time'} );
     $options .= ' -R' if ( $opt{'reverse'} );
@@ -422,19 +422,19 @@ sub iperf3 {
     my %csvfile = ();
 
     $bpsfile{'file'} =
-      'iperf_bps_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
+      'iperf_bps_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
     $lostfile{'file'} =
-      'iperf_lost_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
+      'iperf_lost_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
     $sbpsfile{'file'} =
-      'iperf_sbps_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
+      'iperf_sbps_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
     $rbpsfile{'file'} =
-      'iperf_rbps_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
+      'iperf_rbps_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
     $cpufile{'file'} =
-      'iperf_remote_cpu_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
+      'iperf_remote_cpu_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
 
     if ( $opt{'udp'} ) {
         $csvfile{'file'} =
-          'iperf_udp_' . $process . '_' . ${'time'} . 's' . '.csv';
+          'iperf_udp_' . $process . '_' . $opt{'time'} . 's' . '.csv';
         push(
             @{ $csvfile{'data'} },
             'bps,length,start,end,seconds,'
@@ -446,7 +446,7 @@ sub iperf3 {
     }
     else {
         $csvfile{'file'} =
-          'iperf_tcp_' . $process . '_' . ${'time'} . 's' . '.csv';
+          'iperf_tcp_' . $process . '_' . $opt{'time'} . 's' . '.csv';
         push(
             @{ $csvfile{'data'} },
             'bps,length,start,end,seconds,'
@@ -542,7 +542,7 @@ sub iperf3 {
 
 sub iperf2 {
 
-    $csvdir  .= '_' . ${'time'} . 's';
+    $csvdir  .= '_' . $opt{'time'} . 's';
     $options .= ' -u' if ( $opt{'udp'} );
     $options .= ' -t ' . $opt{'time'} if ( $opt{'time'} );
     $options .= ' -i ' . $opt{'interval'};
@@ -556,13 +556,13 @@ sub iperf2 {
     my %csvfile = ();
 
     $bpsfile{'file'} =
-      'iperf_bps_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
+      'iperf_bps_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
     $lostfile{'file'} =
-      'iperf_lost_chart_' . $process . '_' . ${'time'} . 's' . '.csv';
+      'iperf_lost_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
 
     if ( $opt{'udp'} ) {
         $csvfile{'file'} =
-          'iperf_udp_' . $process . '_' . ${'time'} . 's' . '.csv';
+          'iperf_udp_' . $process . '_' . $opt{'time'} . 's' . '.csv';
         push(
             @{ $csvfile{'data'} },
             'bps,length,time,server,sport,'
@@ -573,7 +573,7 @@ sub iperf2 {
     }
     else {
         $csvfile{'file'} =
-          'iperf_tcp_' . $process . '_' . ${'time'} . 's' . '.csv';
+          'iperf_tcp_' . $process . '_' . $opt{'time'} . 's' . '.csv';
         push(
             @{ $csvfile{'data'} },
             'bps,length,time,server,sport,'
