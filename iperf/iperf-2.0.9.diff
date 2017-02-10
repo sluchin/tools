@@ -53,9 +53,34 @@ diff -uprN iperf-2.0.9.orig/compat/Thread.c iperf-2.0.9/compat/Thread.c
  
      return 0;
  } // end run_wrapper
+diff -uprN iperf-2.0.9.orig/include/Locale.h iperf-2.0.9/include/Locale.h
+--- iperf-2.0.9.orig/include/Locale.h	2016-06-07 03:48:21.000000000 +0900
++++ iperf-2.0.9/include/Locale.h	2017-02-10 14:40:01.577063013 +0900
+@@ -120,6 +120,8 @@ extern const char report_bw_jitter_loss_
+ 
+ extern const char report_sum_bw_jitter_loss_format[];
+ 
++extern const char reportCSV_bw_cpu[];
++
+ /* -------------------------------------------------------------------
+  * Enhanced reports (per -e)
+  * ------------------------------------------------------------------- */
+diff -uprN iperf-2.0.9.orig/include/Reporter.h iperf-2.0.9/include/Reporter.h
+--- iperf-2.0.9.orig/include/Reporter.h	2016-06-07 03:48:21.000000000 +0900
++++ iperf-2.0.9/include/Reporter.h	2017-02-10 15:19:38.390196013 +0900
+@@ -170,6 +170,9 @@ typedef struct Transfer_Info {
+     char   mUDP;
+     char   mTCP;
+     char   free;
++
++    uint32_t pcpu[4];
++
+ } Transfer_Info;
+ 
+ typedef struct Connection_Info {
 diff -uprN iperf-2.0.9.orig/include/Settings.hpp iperf-2.0.9/include/Settings.hpp
 --- iperf-2.0.9.orig/include/Settings.hpp	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/include/Settings.hpp	2017-02-09 09:17:50.222486999 +0900
++++ iperf-2.0.9/include/Settings.hpp	2017-02-10 15:24:11.754196013 +0900
 @@ -156,7 +156,7 @@ typedef struct thread_Settings {
          bool   mNoServerReport;         // -x 
          bool   mNoMultReport;           // -x m
@@ -74,7 +99,21 @@ diff -uprN iperf-2.0.9.orig/include/Settings.hpp iperf-2.0.9/include/Settings.hp
      char pad1[2];
      // structs or miscellaneous
      iperf_sockaddr peer;
-@@ -321,11 +321,11 @@ typedef struct thread_Settings {
+@@ -185,6 +185,13 @@ typedef struct thread_Settings {
+ #if defined( HAVE_WIN32_THREAD )
+     HANDLE mHandle;
+ #endif
++
++    int mAffinity;
++    int mAffinityEnd;
++    int mAffinityComma;
++
++    uint32_t pcpu[4];
++
+ } thread_Settings;
+ 
+ /*
+@@ -321,11 +328,11 @@ typedef struct thread_Settings {
  // use int32_t if possible, otherwise a 32 bit bitfield (e.g. on J90) 
  typedef struct UDP_datagram {
  #ifdef HAVE_INT32_T
@@ -88,7 +127,7 @@ diff -uprN iperf-2.0.9.orig/include/Settings.hpp iperf-2.0.9/include/Settings.hp
      unsigned int tv_sec  : 32;
      unsigned int tv_usec : 32;
  #endif
-@@ -354,25 +354,25 @@ typedef struct client_hdr {
+@@ -354,25 +361,25 @@ typedef struct client_hdr {
       * tradeoff modes, wheither the speaker needs to start 
       * immediately or after the audience finishes.
       */
@@ -132,7 +171,7 @@ diff -uprN iperf-2.0.9.orig/include/Settings.hpp iperf-2.0.9/include/Settings.hp
  #endif
  } client_hdr;
  
-@@ -395,57 +395,57 @@ typedef struct server_hdr {
+@@ -395,57 +402,62 @@ typedef struct server_hdr {
       * set signifying additional information. If no 
       * information bits are set then the header is ignored.
       */
@@ -186,6 +225,8 @@ diff -uprN iperf-2.0.9.orig/include/Settings.hpp iperf-2.0.9/include/Settings.hp
 +    uint32_t cntTransit;
 +    uint32_t IPGcnt;
 +    uint32_t IPGsum;
++
++    uint32_t pcpu[4];
  #else
 -    signed int flags        : 32;
 -    signed int total_len1   : 32;
@@ -237,12 +278,15 @@ diff -uprN iperf-2.0.9.orig/include/Settings.hpp iperf-2.0.9/include/Settings.hp
 +    unsigned int cntTransit   : 32;
 +    unsigned int IPGcnt       : 32;
 +    unsigned int IPGsum       : 32;
++
++    unsigned int pcpu[4];
++
  #endif
  
  } server_hdr;
 diff -uprN iperf-2.0.9.orig/src/Client.cpp iperf-2.0.9/src/Client.cpp
 --- iperf-2.0.9.orig/src/Client.cpp	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/src/Client.cpp	2017-02-09 11:51:08.842486999 +0900
++++ iperf-2.0.9/src/Client.cpp	2017-02-10 17:21:53.842517309 +0900
 @@ -68,6 +68,12 @@
  #include <sys/mman.h>
  #endif
@@ -760,7 +804,7 @@ diff -uprN iperf-2.0.9.orig/src/Listener.cpp iperf-2.0.9/src/Listener.cpp
  
 diff -uprN iperf-2.0.9.orig/src/Locale.c iperf-2.0.9/src/Locale.c
 --- iperf-2.0.9.orig/src/Locale.c	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/src/Locale.c	2017-02-08 20:23:58.723750693 +0900
++++ iperf-2.0.9/src/Locale.c	2017-02-10 14:40:13.997063013 +0900
 @@ -154,34 +154,34 @@ const char separator_line[] =
  "------------------------------------------------------------\n";
  
@@ -871,24 +915,24 @@ diff -uprN iperf-2.0.9.orig/src/Locale.c iperf-2.0.9/src/Locale.c
  
  const char server_reporting[] =
  "[%3d] Server Report:\n";
-@@ -311,30 +311,30 @@ const char reportCSV_peer[] =
+@@ -311,32 +311,36 @@ const char reportCSV_peer[] =
  #ifdef HAVE_QUAD_SUPPORT
  #ifdef HAVE_PRINTF_QD
  const char reportCSV_bw_format[] =
 -"%s,%s,%d,%.1f-%.1f,%qd,%qd\n";
-+"%s,%s,%u,%.1f-%.1f,%qd,%qd\n";
++"%s,%s,%u,%.1f-%.1f,%qd,%qd";
  
  const char reportCSV_bw_jitter_loss_format[] =
 -"%s,%s,%d,%.1f-%.1f,%qd,%qd,%.3f,%d,%d,%.3f,%d\n";
-+"%s,%s,%u,%.1f-%.1f,%qd,%qd,%.3f,%u,%u,%.3f,%u\n";
++"%s,%s,%u,%.1f-%.1f,%qd,%qd,%.3f,%u,%u,%.3f,%u";
  #else // HAVE_PRINTF_QD
  const char reportCSV_bw_format[] =
 -"%s,%s,%d,%.1f-%.1f,%lld,%lld\n";
-+"%s,%s,%u,%.1f-%.1f,%lld,%lld\n";
++"%s,%s,%u,%.1f-%.1f,%lld,%lld";
  
  const char reportCSV_bw_jitter_loss_format[] =
 -"%s,%s,%d,%.1f-%.1f,%lld,%lld,%.3f,%d,%d,%.3f,%d\n";
-+"%s,%s,%u,%.1f-%.1f,%lld,%lld,%.3f,%u,%u,%.3f,%u\n";
++"%s,%s,%u,%.1f-%.1f,%lld,%lld,%.3f,%u,%u,%.3f,%u";
  #endif // HAVE_PRINTF_QD
  #else // HAVE_QUAD_SUPPORT
  #ifdef WIN32
@@ -909,8 +953,14 @@ diff -uprN iperf-2.0.9.orig/src/Locale.c iperf-2.0.9/src/Locale.c
 +"%s,%s,%u,%.1f-%.1f,%u,%u,%.3f,%u,%u,%.3f,%u\n";
  #endif //WIN32
  #endif //HAVE_QUAD_SUPPORT
++
++const char reportCSV_bw_cpu[] =
++",%.1f,%.1f,%.1f";
++
  /* -------------------------------------------------------------------
-@@ -345,7 +345,7 @@ const char warn_window_requested[] =
+  * warnings
+  * ------------------------------------------------------------------- */
+@@ -345,7 +349,7 @@ const char warn_window_requested[] =
  " (WARNING: requested %s)";
  
  const char warn_window_small[] = "\
@@ -919,7 +969,7 @@ diff -uprN iperf-2.0.9.orig/src/Locale.c iperf-2.0.9/src/Locale.c
  will give poor performance. See the Iperf documentation.\n";
  
  const char warn_delay_large[] =
-@@ -355,10 +355,10 @@ const char warn_no_pathmtu[] =
+@@ -355,10 +359,10 @@ const char warn_no_pathmtu[] =
  "WARNING: Path MTU Discovery may not be enabled.\n";
  
  const char warn_no_ack[]=
@@ -932,7 +982,7 @@ diff -uprN iperf-2.0.9.orig/src/Locale.c iperf-2.0.9/src/Locale.c
  
  const char warn_fileopen_failed[]=
  "WARNING: Unable to open file stream for transfer\n\
-@@ -389,7 +389,7 @@ const char warn_implied_compatibility[]
+@@ -389,7 +393,7 @@ const char warn_implied_compatibility[]
  "WARNING: option -%c has implied compatibility mode\n";
  
  const char warn_buffer_too_small[] =
@@ -943,7 +993,7 @@ diff -uprN iperf-2.0.9.orig/src/Locale.c iperf-2.0.9/src/Locale.c
  "WARNING: option -%c is not valid in single threaded versions\n";
 diff -uprN iperf-2.0.9.orig/src/ReportCSV.c iperf-2.0.9/src/ReportCSV.c
 --- iperf-2.0.9.orig/src/ReportCSV.c	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/src/ReportCSV.c	2017-02-08 20:23:58.711750693 +0900
++++ iperf-2.0.9/src/ReportCSV.c	2017-02-10 16:11:47.998196013 +0900
 @@ -56,6 +56,11 @@
  #include "report_CSV.h"
  #include "Locale.h"
@@ -956,8 +1006,32 @@ diff -uprN iperf-2.0.9.orig/src/ReportCSV.c iperf-2.0.9/src/ReportCSV.c
   
  void CSV_stats( Transfer_Info *stats ) {
      // $TIMESTAMP,$ID,$INTERVAL,$BYTE,$SPEED,$JITTER,$LOSS,$PACKET,$%LOSS
-@@ -106,7 +111,9 @@ void CSV_stats( Transfer_Info *stats ) {
+@@ -90,6 +95,14 @@ void CSV_stats( Transfer_Info *stats ) {
+                 stats->endTime, 
+                 stats->TotalLen, 
+                 speed);
++
++        double total = (((double)stats->pcpu[0] * 1000000.0 / CLOCKS_PER_SEC) / (double)stats->pcpu[1]) * 100;
++        double user = ((double)stats->pcpu[2] / (double)stats->pcpu[1]) * 100;
++        double sys = ((double)stats->pcpu[3] / (double)stats->pcpu[1]) * 100;
++
++        printf( reportCSV_bw_cpu, user, sys, total);
++        printf("\n");
++
+     } else {
+         // UDP Reporting
+         printf( reportCSV_bw_jitter_loss_format, 
+@@ -104,9 +117,18 @@ void CSV_stats( Transfer_Info *stats ) {
+                 stats->cntError, 
+                 stats->cntDatagrams,
                  (100.0 * stats->cntError) / stats->cntDatagrams, stats->cntOutofOrder );
++
++        double total = (((double)stats->pcpu[0] * 1000000.0 / CLOCKS_PER_SEC) / (double)stats->pcpu[1]) * 100;
++        double user = ((double)stats->pcpu[2] / (double)stats->pcpu[1]) * 100;
++        double sys = ((double)stats->pcpu[3] / (double)stats->pcpu[1]) * 100;
++
++        printf( reportCSV_bw_cpu, user, sys, total);
++        printf("\n");
      }
      if ( stats->free == 1 && stats->reserved_delay != NULL ) {
 +        DEBUGP("%s[%d]: malloc: %p\n", __FILE__, (int)__LINE__, stats->reserved_delay);
@@ -966,7 +1040,7 @@ diff -uprN iperf-2.0.9.orig/src/ReportCSV.c iperf-2.0.9/src/ReportCSV.c
      }
  }
  
-@@ -116,6 +123,7 @@ void *CSV_peer( Connection_Info *stats,
+@@ -116,6 +138,7 @@ void *CSV_peer( Connection_Info *stats,
      char local_addr[ REPORT_ADDRLEN ];
      char remote_addr[ REPORT_ADDRLEN ];
      char *buf = malloc( REPORT_ADDRLEN*2 + 10 );
@@ -976,7 +1050,7 @@ diff -uprN iperf-2.0.9.orig/src/ReportCSV.c iperf-2.0.9/src/ReportCSV.c
  
 diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
 --- iperf-2.0.9.orig/src/Reporter.c	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/src/Reporter.c	2017-02-09 09:35:07.786486999 +0900
++++ iperf-2.0.9/src/Reporter.c	2017-02-10 17:30:55.342517309 +0900
 @@ -63,6 +63,12 @@
  extern "C" {
  #endif
@@ -1033,7 +1107,31 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
          Transfer_Info *stats = &reporthdr->report.info;
  
          if ( reporthdr != NULL ) {
-@@ -624,6 +636,7 @@ again:
+@@ -558,6 +570,15 @@ void ReportServerUDP( thread_Settings *a
+             stats->IPGsum = ntohl( server->IPGsum );
+ 
+             stats->mUDP = (char)kMode_Server;
++
++            stats->pcpu[0] = (double)ntohl(server->pcpu[0]);
++            stats->pcpu[1] = (double)ntohl(server->pcpu[1]);
++            stats->pcpu[2] = (double)ntohl(server->pcpu[2]);
++            stats->pcpu[3] = (double)ntohl(server->pcpu[3]);
++            DEBUGP("%s[%d]: ", __FILE__, __LINE__);
++            DEBUGP("pcpu: [0]=%u, [1]=%u, [2]=%u, [3]=%u\n",
++                   stats->pcpu[0] , stats->pcpu[1] , stats->pcpu[2], stats->pcpu[3]);
++
+             reporthdr->report.connection.peer = agent->local;
+             reporthdr->report.connection.size_peer = agent->size_local;
+             reporthdr->report.connection.local = agent->peer;
+@@ -590,6 +611,7 @@ void ReportServerUDP( thread_Settings *a
+  * This function is the loop that the reporter thread processes
+  */
+ void reporter_spawn( thread_Settings *thread ) {
++    DEBUGP("%s[%d]: %s\n", __FILE__, (int)__LINE__, __func__);
+     do {
+         // This section allows for safe exiting with Ctrl-C
+         Condition_Lock ( ReportCond );
+@@ -624,6 +646,7 @@ again:
                  }
                  // finished with report so free it
                  free( temp );
@@ -1041,7 +1139,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
                  Condition_Unlock ( ReportCond );
                  Condition_Signal( &ReportDoneCond );
                  if (ReportRoot)
-@@ -685,7 +698,9 @@ again:
+@@ -685,7 +708,9 @@ again:
  void process_report ( ReportHeader *report ) {
      if ( report != NULL ) {
          if ( reporter_process_report( report ) ) {
@@ -1051,7 +1149,15 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
          }
      }
  }
-@@ -702,7 +717,9 @@ int reporter_process_report ( ReportHead
+@@ -694,6 +719,7 @@ void process_report ( ReportHeader *repo
+  * Process reports starting with "reporthdr"
+  */
+ int reporter_process_report ( ReportHeader *reporthdr ) {
++    //DEBUGP("%s[%d]: %s\n", __FILE__, (int)__LINE__, __func__);
+     int need_free = 0;
+ 
+     // Recursively process reports
+@@ -702,7 +728,9 @@ int reporter_process_report ( ReportHead
              // If we are done with this report then free it
              ReportHeader *temp = reporthdr->next;
              reporthdr->next = reporthdr->next->next;
@@ -1061,23 +1167,60 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
          }
      }
  
+@@ -757,6 +785,7 @@ int reporter_process_report ( ReportHead
+  * Updates connection stats
+  */
+ int reporter_handle_packet( ReportHeader *reporthdr ) {
++    //DEBUGP("%s[%d]: %s\n", __FILE__, (int)__LINE__, __func__);
+     ReportStruct *packet = &reporthdr->data[reporthdr->reporterindex];
+     ReporterData *data = &reporthdr->report;
+     Transfer_Info *stats = &reporthdr->report.info;
+@@ -896,6 +925,7 @@ int reporter_handle_packet( ReportHeader
+  * Handles summing of threads
+  */
+ void reporter_handle_multiple_reports( MultiHeader *reporthdr, Transfer_Info *stats, int force ) {
++    DEBUGP("%s[%d]: %s\n", __FILE__, (int)__LINE__, __func__);
+     if ( reporthdr != NULL ) {
+         if ( reporthdr->threads > 1 ) {
+             int i;
+@@ -984,6 +1014,7 @@ void reporter_handle_multiple_reports( M
+ 
+ #ifdef HAVE_STRUCT_TCP_INFO_TCPI_TOTAL_RETRANS
+ static void gettcpistats (ReporterData *stats) {
++    DEBUGP("%s[%d]: %s\n", __FILE__, (int)__LINE__, __func__);
+     struct tcp_info tcp_internal;
+     socklen_t tcp_info_length = sizeof(struct tcp_info);
+     int retry;
+@@ -1113,6 +1144,7 @@ int reporter_condprintstats( ReporterDat
+  * appropriate dispatch function
+  */
+ int reporter_print( ReporterData *stats, int type, int end ) {
++    DEBUGP("%s[%d]: reporter_print: type=%d\n", __FILE__, (int)__LINE__, type);
+     switch ( type ) {
+         case TRANSFER_REPORT:
+             statistics_reports[stats->mode]( &stats->info );
 diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
 --- iperf-2.0.9.orig/src/Server.cpp	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/src/Server.cpp	2017-02-09 14:13:57.082089135 +0900
-@@ -68,6 +68,12 @@
++++ iperf-2.0.9/src/Server.cpp	2017-02-10 17:22:07.642517309 +0900
+@@ -68,6 +68,17 @@
  #include <sys/mman.h>
  #endif
  
++#include <sys/time.h>
++#include <sys/resource.h>
++
 +#ifdef _DEBUG
 +#define DEBUGP(fmt, ...)    printf(fmt, ## __VA_ARGS__)
 +#else
 +#define DEBUGP(fmt, ...)
 +#endif
 +
++static void cpu_util(uint32_t pcpu[3]);
++
  /* -------------------------------------------------------------------
   * Stores connected socket and socket info.
   * ------------------------------------------------------------------- */
-@@ -78,6 +84,8 @@ Server::Server( thread_Settings *inSetti
+@@ -78,6 +89,8 @@ Server::Server( thread_Settings *inSetti
  
      // initialize buffer
      mBuf = new char[ mSettings->mBufLen ];
@@ -1086,7 +1229,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
      FAIL_errno( mBuf == NULL, "No memory for buffer\n", mSettings );
  }
  
-@@ -91,7 +99,11 @@ Server::~Server() {
+@@ -91,7 +104,11 @@ Server::~Server() {
          WARN_errno( rc == SOCKET_ERROR, "close" );
          mSettings->mSock = INVALID_SOCKET;
      }
@@ -1099,15 +1242,63 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
  }
  
  void Server::Sig_Int( int inSigno ) {
-@@ -129,6 +141,7 @@ void Server::Run( void ) {
+@@ -128,7 +145,32 @@ void Server::Run( void ) {
+     message.msg_controllen = sizeof(ctrl);
  #endif
  
++#ifdef HAVE_SCHED_SETSCHEDULER
++    if (0 <= mSettings->mAffinity) {
++        cpu_set_t cpu_set;
++        CPU_ZERO(&cpu_set);
++        if ( mSettings->mAffinityEnd < 0) {
++            CPU_SET(mSettings->mAffinity, &cpu_set);
++        } else {
++            if (mSettings->mAffinityComma) {
++                CPU_SET(mSettings->mAffinity, &cpu_set);
++                CPU_SET(mSettings->mAffinityEnd, &cpu_set);
++            } else {
++                int i;
++                for (i = mSettings->mAffinity; i < mSettings->mAffinityEnd; ++i) {
++                    CPU_SET(i, &cpu_set);
++                }
++            }
++        }
++        if (sched_setaffinity(0, sizeof(cpu_set_t), &cpu_set) != 0) {
++            printf("sched_setaffinity error!!\n");
++            exit(-1);
++        }
++    }
++#endif
++
      reportstruct = new ReportStruct;
 +    DEBUGP("%s[%d]: new ReportStruct: %p\n", __FILE__, (int)__LINE__, reportstruct);
      if ( reportstruct != NULL ) {
          reportstruct->packetID = 0;
          mSettings->reporthdr = InitReport( mSettings );
-@@ -293,10 +306,19 @@ void Server::Run( void ) {
+@@ -184,6 +226,9 @@ void Server::Run( void ) {
+ 	    mEndTime.setnow();
+ 	    mEndTime.add( mSettings->mAmount / 100.0 );
+ 	}
++
++    cpu_util(NULL);
++
+         do {
+ 	    reportstruct->emptyreport=0;
+ #if HAVE_DECL_SO_TIMESTAMP
+@@ -272,6 +317,12 @@ void Server::Run( void ) {
+             }
+         } while (running); 
+                 
++
++        cpu_util(mSettings->pcpu);
++        DEBUGP("%s[%d]: ", __FILE__, __LINE__);
++        DEBUGP("pcpu: [0]=%u, [1]=%u, [2]=%u, [3]=%u\n",
++               mSettings->pcpu[0] , mSettings->pcpu[1] , mSettings->pcpu[2], mSettings->pcpu[3]);
++
+         // stop timing 
+         gettimeofday( &(reportstruct->packetTime), NULL );
+         
+@@ -293,11 +344,36 @@ void Server::Run( void ) {
      }
  
      Mutex_Lock( &clients_mutex );     
@@ -1127,9 +1318,26 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
 +        reportstruct = NULL;
 +    }
      EndReport( mSettings->reporthdr );
++
++#ifdef HAVE_SCHED_SETSCHEDULER
++    if (0 <= mSettings->mAffinity) {
++        cpu_set_t cpu_set;
++        int i;
++
++        CPU_ZERO(&cpu_set);
++        for (i = 0; i < CPU_SETSIZE; ++i) {
++            CPU_SET(i, &cpu_set);
++        }
++        if (sched_setaffinity(0, sizeof(cpu_set_t), &cpu_set) != 0) {
++            printf("sched_setaffinity error!!\n");
++            exit(-1);
++        }
++    }
++#endif
  } 
  // end Recv 
-@@ -321,10 +343,14 @@ void Server::write_UDP_AckFIN( ) {
+ 
+@@ -321,10 +397,14 @@ void Server::write_UDP_AckFIN( ) {
      while ( count < 10 ) {
          count++; 
  
@@ -1145,8 +1353,18 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
  
          if ( mSettings->mBufLen > (int) ( sizeof( UDP_datagram )
                                            + sizeof( server_hdr ) ) ) {
-@@ -359,7 +385,10 @@ void Server::write_UDP_AckFIN( ) {
+@@ -356,10 +436,20 @@ void Server::write_UDP_AckFIN( ) {
+             hdr->cntTransit   = htonl( stats->transit.totcntTransit );
+ 	    hdr->IPGcnt = htonl( (long) (stats->cntDatagrams / (stats->endTime - stats->startTime)));
+ 	    hdr->IPGsum = htonl(1);
++
++            hdr->pcpu[0]    = htonl((uint32_t)mSettings->pcpu[0]);
++            hdr->pcpu[1]    = htonl((uint32_t)mSettings->pcpu[1]);
++            hdr->pcpu[2]    = htonl((uint32_t)mSettings->pcpu[2]);
++            hdr->pcpu[3]    = htonl((uint32_t)mSettings->pcpu[3]);
          }
++        DEBUGP("%s[%d]: ", __FILE__, __LINE__);
++        DEBUGP("pcpu: [0]=%u, [1]=%u, [2]=%u, [3]=%u\n", hdr->pcpu[0] , hdr->pcpu[1] , hdr->pcpu[2], hdr->pcpu[3]);
  
          // write data 
 -        write( mSettings->mSock, mBuf, mSettings->mBufLen ); 
@@ -1157,7 +1375,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
  
          // wait until the socket is readable, or our timeout expires 
          FD_SET( mSettings->mSock, &readSet ); 
-@@ -379,6 +408,7 @@ void Server::write_UDP_AckFIN( ) {
+@@ -379,6 +469,7 @@ void Server::write_UDP_AckFIN( ) {
              if ( rc <= 0 ) {
                  // Connection closed or errored
                  // Stop using it.
@@ -1165,9 +1383,65 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
                  return;
              }
          } 
+@@ -388,3 +479,55 @@ void Server::write_UDP_AckFIN( ) {
+ } 
+ // end write_UDP_AckFIN 
+ 
++static void
++cpu_util(uint32_t pcpu[4])
++{
++    static struct timeval last;
++    static clock_t clast;
++    static struct rusage rlast;
++    struct timeval temp;
++    clock_t ctemp;
++    struct rusage rtemp;
++    uint32_t diff;
++    uint32_t timediff;
++    uint32_t userdiff;
++    uint32_t systemdiff;
++
++    if (pcpu == NULL) {
++        gettimeofday(&last, NULL);
++        clast = clock();
++        getrusage(RUSAGE_SELF, &rlast);
++        return;
++    }
++
++    gettimeofday(&temp, NULL);
++    ctemp = clock();
++    getrusage(RUSAGE_SELF, &rtemp);
++
++    diff = ctemp - clast;
++    timediff = ((temp.tv_sec * 1000000.0 + temp.tv_usec) -
++                (last.tv_sec * 1000000.0 + last.tv_usec));
++    userdiff = ((rtemp.ru_utime.tv_sec * 1000000.0 + rtemp.ru_utime.tv_usec) -
++                (rlast.ru_utime.tv_sec * 1000000.0 + rlast.ru_utime.tv_usec));
++    systemdiff = ((rtemp.ru_stime.tv_sec * 1000000.0 + rtemp.ru_stime.tv_usec) -
++                  (rlast.ru_stime.tv_sec * 1000000.0 + rlast.ru_stime.tv_usec));
++    pcpu[0] = diff;
++    pcpu[1] = timediff;
++    pcpu[2] = userdiff;
++    pcpu[3] = systemdiff;
++
++#ifdef _DEBUG
++    double dtimediff = ((temp.tv_sec * 1000000.0 + temp.tv_usec) -
++                (last.tv_sec * 1000000.0 + last.tv_usec));
++    double duserdiff = ((rtemp.ru_utime.tv_sec * 1000000.0 + rtemp.ru_utime.tv_usec) -
++                (rlast.ru_utime.tv_sec * 1000000.0 + rlast.ru_utime.tv_usec));
++    double dsystemdiff = ((rtemp.ru_stime.tv_sec * 1000000.0 + rtemp.ru_stime.tv_usec) -
++                  (rlast.ru_stime.tv_sec * 1000000.0 + rlast.ru_stime.tv_usec));
++    double total = (((ctemp - clast) * 1000000.0 / CLOCKS_PER_SEC) / dtimediff) * 100;
++    double user = (duserdiff / dtimediff) * 100;
++    double sys = (dsystemdiff / dtimediff) * 100;
++    printf("%s[%d]: ", __FILE__, __LINE__);
++    printf("pcpu: [0]=%u, [1]=%.5f, [2]=%.5f, [3]=%.5f\n", (ctemp - clast), dtimediff, duserdiff, dsystemdiff);
++    printf("user=%.1f, sys=%.1f, total=%.1f\n", user, sys, total);
++#endif
++}
 diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
 --- iperf-2.0.9.orig/src/Settings.cpp	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/src/Settings.cpp	2017-02-09 16:17:04.728883999 +0900
++++ iperf-2.0.9/src/Settings.cpp	2017-02-10 15:31:20.250196013 +0900
 @@ -71,6 +71,12 @@
  
  #include "gnu_getopt.h"
@@ -1181,7 +1455,25 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
  void Settings_Interpret( char option, const char *optarg, thread_Settings *mExtSettings );
  
  /* -------------------------------------------------------------------
-@@ -240,22 +246,29 @@ void Settings_Initialize( thread_Setting
+@@ -123,6 +129,7 @@ const struct option long_options[] =
+ {"ipv6_domain",      no_argument, NULL, 'V'},
+ {"suggest_win_size", no_argument, NULL, 'W'},
+ {"linux-congestion", required_argument, NULL, 'Z'},
++{"affinity", required_argument, NULL, 'A'},
+ {0, 0, 0, 0}
+ };
+ 
+@@ -237,25 +244,39 @@ void Settings_Initialize( thread_Setting
+     //main->mDomain     = kMode_IPv4;    // -V,
+     //main->mSuggestWin = false;         // -W,  Suggest the window size.
+ 
++    main->mAffinity     = -1;
++    main->mAffinityEnd  = -1;
++    main->pcpu[0] = 0;
++    main->pcpu[1] = 0;
++    main->pcpu[2] = 0;
++    main->pcpu[3] = 0;
++
  } // end Settings
  
  void Settings_Copy( thread_Settings *from, thread_Settings **into ) {
@@ -1211,7 +1503,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
          strcpy( (*into)->mFileName, from->mFileName );
      }
      // Zero out certain entries
-@@ -269,11 +282,37 @@ void Settings_Copy( thread_Settings *fro
+@@ -269,11 +290,36 @@ void Settings_Copy( thread_Settings *fro
   * ------------------------------------------------------------------- */
  
  void Settings_Destroy( thread_Settings *mSettings) {
@@ -1238,7 +1530,6 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
 +        mSettings->mFileName = NULL;
 +   	}
 +
-+
 +    if (mSettings->mOutputFileName != NULL) {
 +        DEBUGP("%s[%d]: DELETE_ARRAY: %p\n", __FILE__, (int)__LINE__, mSettings->mOutputFileName);
 +        DELETE_ARRAY( mSettings->mOutputFileName );
@@ -1254,7 +1545,17 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
  } // end ~Settings
  
  /* -------------------------------------------------------------------
-@@ -329,7 +368,7 @@ void Settings_Interpret( char option, co
+@@ -320,6 +366,9 @@ void Settings_Interpret( char option, co
+     char *results = NULL;
+     max_size_t theNum;
+     char suffix='\0';
++    char *endptr = NULL;
++    char *cparg = (char *)optarg;
++    char *comma = NULL;
+ 
+     switch ( option ) {
+         case '1': // Single Client
+@@ -329,7 +378,7 @@ void Settings_Interpret( char option, co
              Settings_GetLowerCaseArg(optarg,outarg);
  	    // scan for PPS units, just look for 'p' as that's good enough
  #ifdef HAVE_QUAD_SUPPORT
@@ -1263,7 +1564,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
  #else
  	    sscanf(outarg, "%lu%c", &theNum, &suffix );
  #endif
-@@ -350,6 +389,8 @@ void Settings_Interpret( char option, co
+@@ -350,6 +399,8 @@ void Settings_Interpret( char option, co
  
          case 'c': // client mode w/ server host to connect to
              mExtSettings->mHost = new char[ strlen( optarg ) + 1 ];
@@ -1272,7 +1573,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
              strcpy( mExtSettings->mHost, optarg );
  
              if ( mExtSettings->mThreadMode == kMode_Unknown ) {
-@@ -443,6 +484,7 @@ void Settings_Interpret( char option, co
+@@ -443,6 +494,7 @@ void Settings_Interpret( char option, co
          case 'o' : // output the report and other messages into the file
              unsetSTDOUT( mExtSettings );
              mExtSettings->mOutputFileName = new char[strlen(optarg)+1];
@@ -1280,7 +1581,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
              strcpy( mExtSettings->mOutputFileName, optarg);
              break;
  
-@@ -563,19 +605,26 @@ void Settings_Interpret( char option, co
+@@ -563,19 +615,26 @@ void Settings_Interpret( char option, co
              // more esoteric options
          case 'B': // specify bind address
  	    parsedopts = new char[ strlen( optarg ) + 1 ];
@@ -1308,7 +1609,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
              // Test for Multicast
              iperf_sockaddr temp;
              SockAddr_setHostname( mExtSettings->mLocalhost, &temp,
-@@ -607,6 +656,7 @@ void Settings_Interpret( char option, co
+@@ -607,6 +666,7 @@ void Settings_Interpret( char option, co
  
              setFileInput( mExtSettings );
              mExtSettings->mFileName = new char[strlen(optarg)+1];
@@ -1316,7 +1617,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
              strcpy( mExtSettings->mFileName, optarg);
              break;
  
-@@ -619,6 +669,7 @@ void Settings_Interpret( char option, co
+@@ -619,6 +679,7 @@ void Settings_Interpret( char option, co
              setFileInput( mExtSettings );
              setSTDIN( mExtSettings );
              mExtSettings->mFileName = new char[strlen("<stdin>")+1];
@@ -1324,7 +1625,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
              strcpy( mExtSettings->mFileName,"<stdin>");
              break;
  
-@@ -701,6 +752,7 @@ void Settings_Interpret( char option, co
+@@ -701,12 +762,46 @@ void Settings_Interpret( char option, co
  #ifdef TCP_CONGESTION
  	    setCongestionControl( mExtSettings );
  	    mExtSettings->mCongestion = new char[strlen(optarg)+1];
@@ -1332,7 +1633,46 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
  	    strcpy( mExtSettings->mCongestion, optarg);
  #else
              fprintf( stderr, "The -Z option is not available on this operating system\n");
-@@ -744,6 +796,8 @@ void Settings_GenerateListenerSettings(
+ #endif
+ 	    break;
+ 
++        case 'A':
++#ifdef HAVE_SCHED_SETSCHEDULER
++            mExtSettings->mAffinity = strtol(optarg, &endptr, 0);
++            if (endptr == optarg ||
++                mExtSettings->mAffinity < 0 || mExtSettings->mAffinity > 1024) {
++                //i_errno = IEAFFINITY;
++                exit(-1);
++            }
++
++            comma = strchr(cparg, ',');
++            if (comma != NULL) {
++                mExtSettings->mAffinityEnd = atoi(comma+1);
++                if (mExtSettings->mAffinityEnd < 0 || mExtSettings->mAffinityEnd > 1024) {
++                    //i_errno = IEAFFINITY;
++                    exit(-1);
++                }
++                mExtSettings->mAffinityComma = 1;
++            } else {
++                comma = strchr(cparg, '-');
++                if (comma != NULL) {
++                    mExtSettings->mAffinityEnd = atoi(comma+1);
++                    if (mExtSettings->mAffinityEnd < 0 || mExtSettings->mAffinityEnd > 1024) {
++                        //i_errno = IEAFFINITY;
++                        exit(-1);
++                    }
++                    mExtSettings->mAffinityComma = 0;
++                }
++            }
++#else
++            printf("Don't have sched_setscheduler\n");
++            printf("CPU affinity is not support\n");
++            exit(-1);
++#endif
+         default: // ignore unknown
+             break;
+     }
+@@ -744,6 +839,8 @@ void Settings_GenerateListenerSettings(
      if ( !isCompat( client ) && 
           (client->mMode == kTest_DualTest || client->mMode == kTest_TradeOff) ) {
          *listener = new thread_Settings;
@@ -1341,7 +1681,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
          memcpy(*listener, client, sizeof( thread_Settings ));
          setCompat( (*listener) );
          unsetDaemon( (*listener) );
-@@ -758,14 +812,15 @@ void Settings_GenerateListenerSettings(
+@@ -758,14 +855,15 @@ void Settings_GenerateListenerSettings(
          (*listener)->mOutputFileName = NULL;
          (*listener)->mMode       = kTest_Normal;
          (*listener)->mThreadMode = kMode_Listener;
@@ -1365,7 +1705,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
      } else {
          *listener = NULL;
      }
-@@ -786,6 +841,8 @@ void Settings_GenerateClientSettings( th
+@@ -786,6 +884,8 @@ void Settings_GenerateClientSettings( th
      int flags = ntohl(hdr->flags);
      if ( (flags & HEADER_VERSION1) != 0 ) {
          *client = new thread_Settings;
@@ -1374,7 +1714,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
          memcpy(*client, server, sizeof( thread_Settings ));
          setCompat( (*client) );
          (*client)->mTID = thread_zeroid();
-@@ -822,9 +879,12 @@ void Settings_GenerateClientSettings( th
+@@ -822,9 +922,12 @@ void Settings_GenerateClientSettings( th
          (*client)->mThreadMode = kMode_Client;
          if ( server->mLocalhost != NULL ) {
              (*client)->mLocalhost = new char[strlen( server->mLocalhost ) + 1];
@@ -1387,7 +1727,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
          if ( ((sockaddr*)&server->peer)->sa_family == AF_INET ) {
              inet_ntop( AF_INET, &((sockaddr_in*)&server->peer)->sin_addr, 
                         (*client)->mHost, REPORT_ADDRLEN);
-@@ -847,6 +907,8 @@ void Settings_GenerateClientSettings( th
+@@ -847,6 +950,8 @@ void Settings_GenerateClientSettings( th
   * This should be an inverse operation of GenerateSpeakerSettings
   */
  void Settings_GenerateClientHdr( thread_Settings *client, client_hdr *hdr ) {
