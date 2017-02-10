@@ -342,6 +342,9 @@ sub _csv_to_hash_udp {
         'total'     => $d[11] || '',
         'percent'   => $d[12] || '',
         'unclear2'  => $d[13] || '',
+        'user'      => $d[14] || '',
+        'sys'       => $d[15] || '',
+        'total'     => $d[16] || '',
     );
 
     return %hash;
@@ -350,15 +353,18 @@ sub _csv_to_hash_udp {
 sub _csv_to_hash_tcp {
     my @d    = @_;
     my %hash = (
-        'time'      => $d[0] || '',
-        'server'    => $d[1] || '',
-        'sport'     => $d[2] || '',
-        'client'    => $d[3] || '',
-        'cport'     => $d[4] || '',
-        'unclear1'  => $d[5] || '',
-        'interval'  => $d[6] || '',
-        'transfer'  => $d[7] || '',
-        'bandwidth' => $d[8] || '',
+        'time'      => $d[0]  || '',
+        'server'    => $d[1]  || '',
+        'sport'     => $d[2]  || '',
+        'client'    => $d[3]  || '',
+        'cport'     => $d[4]  || '',
+        'unclear1'  => $d[5]  || '',
+        'interval'  => $d[6]  || '',
+        'transfer'  => $d[7]  || '',
+        'bandwidth' => $d[8]  || '',
+        'user'      => $d[9]  || '',
+        'sys'       => $d[10] || '',
+        'total'     => $d[11] || '',
     );
 
     return %hash;
@@ -551,14 +557,20 @@ sub iperf2 {
     $options .= ' -M ' . $opt{'set-mss'} if ( defined( $opt{'set-mss'} ) );
     $options .= ' -y c';
 
-    my ( %bps,     %lost )     = ();
-    my ( %bpsfile, %lostfile ) = ();
+    my ( %bps,     %lost,     %user,     %sys,     %total )     = ();
+    my ( %bpsfile, %lostfile, %userfile, %sysfile, %totalfile ) = ();
     my %csvfile = ();
 
     $bpsfile{'file'} =
       'iperf_bps_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
     $lostfile{'file'} =
       'iperf_lost_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
+    $userfile{'file'} =
+      'iperf_cpu_user_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
+    $sysfile{'file'} =
+      'iperf_cpu_sys_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
+    $totalfile{'file'} =
+      'iperf_cpu_total_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
 
     if ( $opt{'udp'} ) {
         $csvfile{'file'} =
@@ -631,13 +643,19 @@ sub iperf2 {
 
             my %csv = ();
             if ( $opt{'udp'} ) {
-                %csv                         = _csv_to_hash_udp(@data);
-                $bps{ $bps->{'bps'} }{$len}  = $csv{'bandwidth'};
-                $lost{ $bps->{'bps'} }{$len} = $csv{'percent'};
+                %csv                          = _csv_to_hash_udp(@data);
+                $bps{ $bps->{'bps'} }{$len}   = $csv{'bandwidth'};
+                $lost{ $bps->{'bps'} }{$len}  = $csv{'percent'};
+                $user{ $bps->{'bps'} }{$len}  = $csv{'user'};
+                $sys{ $bps->{'bps'} }{$len}   = $csv{'sys'};
+                $total{ $bps->{'bps'} }{$len} = $csv{'total'};
             }
             else {
-                %csv = _csv_to_hash_tcp(@data);
-                $bps{ $bps->{'bps'} }{$len} = $csv{'bandwidth'};
+                %csv                          = _csv_to_hash_tcp(@data);
+                $bps{ $bps->{'bps'} }{$len}   = $csv{'bandwidth'};
+                $user{ $bps->{'bps'} }{$len}  = $csv{'user'};
+                $sys{ $bps->{'bps'} }{$len}   = $csv{'sys'};
+                $total{ $bps->{'bps'} }{$len} = $csv{'total'};
             }
             $csvdata =
                 $bps->{'bps'} . ','
@@ -665,6 +683,18 @@ sub iperf2 {
         print "\nlost packet percent chart:\n" if ( $opt{'vorbis'} );
         _output( \%lostfile );
     }
+
+    @{ $userfile{'data'} } = _chart( \%user );
+    print "\ncpu user chart:\n" if ( $opt{'vorbis'} );
+    _output( \%userfile );
+
+    @{ $sysfile{'data'} } = _chart( \%sys );
+    print "\ncpu sys chart:\n" if ( $opt{'vorbis'} );
+    _output( \%sysfile );
+
+    @{ $totalfile{'data'} } = _chart( \%total );
+    print "\ncpu total chart:\n" if ( $opt{'vorbis'} );
+    _output( \%totalfile );
 }
 
 # サーバ
