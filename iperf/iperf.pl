@@ -580,7 +580,7 @@ sub iperf2 {
             'bps,length,time,server,sport,'
               . 'client,cport,,'
               . 'interval,transfer,bandwidth,jitter,'
-              . 'lost,total,lost_percent,,command'
+              . 'lost,total,lost_percent,,user,sys,total,command'
         );
     }
     else {
@@ -590,7 +590,7 @@ sub iperf2 {
             @{ $csvfile{'data'} },
             'bps,length,time,server,sport,'
               . 'client,cport,,'
-              . 'interval,transfer,bandwidth,,command'
+              . 'interval,transfer,bandwidth,,user,sys,total,command'
         );
     }
 
@@ -638,7 +638,7 @@ sub iperf2 {
 
             my $csvdata = pop(@content) || '';
             chop($csvdata) unless ( $csvdata eq '' );
-            print $csvdata . "\n" if ( $opt{'debug'} );
+            print $csvdata . "\n" if ( $opt{'vorbis'} );
             my @data = split /,/, $csvdata;
 
             my %csv = ();
