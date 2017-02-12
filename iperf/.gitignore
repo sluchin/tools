@@ -1,0 +1,6 @@
+# .gitignore
+
+iperf-2.0.9.tar.gz
+iperf-2.0.9-source.tar.gz
+iperf-2.0.9/
+iperf-2.0.9.orig/
