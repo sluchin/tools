@@ -67,20 +67,20 @@ diff -uprN iperf-2.0.9.orig/include/Locale.h iperf-2.0.9/include/Locale.h
   * ------------------------------------------------------------------- */
 diff -uprN iperf-2.0.9.orig/include/Reporter.h iperf-2.0.9/include/Reporter.h
 --- iperf-2.0.9.orig/include/Reporter.h	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/include/Reporter.h	2017-02-13 09:20:40.576232999 +0900
++++ iperf-2.0.9/include/Reporter.h	2017-02-13 14:57:57.978666316 +0900
 @@ -170,6 +170,9 @@ typedef struct Transfer_Info {
      char   mUDP;
      char   mTCP;
      char   free;
 +
-+    uint32_t pcpu[4];
++    uint32_t pcpu[5];
 +
  } Transfer_Info;
  
  typedef struct Connection_Info {
 diff -uprN iperf-2.0.9.orig/include/Settings.hpp iperf-2.0.9/include/Settings.hpp
 --- iperf-2.0.9.orig/include/Settings.hpp	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/include/Settings.hpp	2017-02-13 09:20:40.576232999 +0900
++++ iperf-2.0.9/include/Settings.hpp	2017-02-13 14:58:44.574666316 +0900
 @@ -156,7 +156,7 @@ typedef struct thread_Settings {
          bool   mNoServerReport;         // -x 
          bool   mNoMultReport;           // -x m
@@ -108,7 +108,7 @@ diff -uprN iperf-2.0.9.orig/include/Settings.hpp iperf-2.0.9/include/Settings.hp
 +    int mAffinityEnd;
 +    int mAffinityComma;
 +
-+    uint32_t pcpu[4];
++    uint32_t pcpu[5];
 +
  } thread_Settings;
  
@@ -226,7 +226,7 @@ diff -uprN iperf-2.0.9.orig/include/Settings.hpp iperf-2.0.9/include/Settings.hp
 +    uint32_t IPGcnt;
 +    uint32_t IPGsum;
 +
-+    uint32_t pcpu[4];
++    uint32_t pcpu[5];
  #else
 -    signed int flags        : 32;
 -    signed int total_len1   : 32;
@@ -279,14 +279,14 @@ diff -uprN iperf-2.0.9.orig/include/Settings.hpp iperf-2.0.9/include/Settings.hp
 +    unsigned int IPGcnt       : 32;
 +    unsigned int IPGsum       : 32;
 +
-+    unsigned int pcpu[4];
++    unsigned int pcpu[5];
 +
  #endif
  
  } server_hdr;
 diff -uprN iperf-2.0.9.orig/src/Client.cpp iperf-2.0.9/src/Client.cpp
 --- iperf-2.0.9.orig/src/Client.cpp	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/src/Client.cpp	2017-02-13 09:20:40.576232999 +0900
++++ iperf-2.0.9/src/Client.cpp	2017-02-13 11:53:24.642955712 +0900
 @@ -68,6 +68,12 @@
  #include <sys/mman.h>
  #endif
@@ -386,8 +386,7 @@ diff -uprN iperf-2.0.9.orig/src/Client.cpp iperf-2.0.9/src/Client.cpp
 +            }
 +
          } else {
--            write_UDP_FIN( ); 
-+          write_UDP_FIN( ); 
+             write_UDP_FIN( ); 
          }
      }
 -    DELETE_PTR( reportstruct );
@@ -845,7 +844,7 @@ diff -uprN iperf-2.0.9.orig/src/Listener.cpp iperf-2.0.9/src/Listener.cpp
  
 diff -uprN iperf-2.0.9.orig/src/Locale.c iperf-2.0.9/src/Locale.c
 --- iperf-2.0.9.orig/src/Locale.c	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/src/Locale.c	2017-02-13 09:20:40.588232999 +0900
++++ iperf-2.0.9/src/Locale.c	2017-02-13 14:59:51.494666316 +0900
 @@ -154,34 +154,34 @@ const char separator_line[] =
  "------------------------------------------------------------\n";
  
@@ -996,7 +995,7 @@ diff -uprN iperf-2.0.9.orig/src/Locale.c iperf-2.0.9/src/Locale.c
  #endif //HAVE_QUAD_SUPPORT
 +
 +const char reportCSV_bw_cpu[] =
-+",%f,%f,%f";
++",%f,%f,%f,%u";
 +
  /* -------------------------------------------------------------------
   * warnings
@@ -1034,7 +1033,7 @@ diff -uprN iperf-2.0.9.orig/src/Locale.c iperf-2.0.9/src/Locale.c
  "WARNING: option -%c is not valid in single threaded versions\n";
 diff -uprN iperf-2.0.9.orig/src/ReportCSV.c iperf-2.0.9/src/ReportCSV.c
 --- iperf-2.0.9.orig/src/ReportCSV.c	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/src/ReportCSV.c	2017-02-13 09:20:40.588232999 +0900
++++ iperf-2.0.9/src/ReportCSV.c	2017-02-13 15:03:55.934666316 +0900
 @@ -56,8 +56,16 @@
  #include "report_CSV.h"
  #include "Locale.h"
@@ -1046,7 +1045,7 @@ diff -uprN iperf-2.0.9.orig/src/ReportCSV.c iperf-2.0.9/src/ReportCSV.c
 +#define DEBUGP(fmt, ...)
 +#endif
 +
-+extern uint32_t g_pcpu[4];
++extern uint32_t g_pcpu[5];
 +
  void CSV_stats( Transfer_Info *stats ) {
 +    DEBUGP("%s[%d]: %s\n", __FILE__, (int)__LINE__, __func__);
@@ -1067,7 +1066,7 @@ diff -uprN iperf-2.0.9.orig/src/ReportCSV.c iperf-2.0.9/src/ReportCSV.c
 +        double user = ((double)g_pcpu[2] / (double)g_pcpu[1]) * 100;
 +        double sys = ((double)g_pcpu[3] / (double)g_pcpu[1]) * 100;
 +
-+        printf( reportCSV_bw_cpu, user, sys, total);
++        printf( reportCSV_bw_cpu, user, sys, total, g_pcpu[4]);
 +        printf("\n");
 +
      } else {
@@ -1082,7 +1081,7 @@ diff -uprN iperf-2.0.9.orig/src/ReportCSV.c iperf-2.0.9/src/ReportCSV.c
 +        double user = ((double)stats->pcpu[2] / (double)stats->pcpu[1]) * 100;
 +        double sys = ((double)stats->pcpu[3] / (double)stats->pcpu[1]) * 100;
 +
-+        printf( reportCSV_bw_cpu, user, sys, total);
++        printf( reportCSV_bw_cpu, user, sys, total, stats->pcpu[4]);
 +        printf("\n");
      }
      if ( stats->free == 1 && stats->reserved_delay != NULL ) {
@@ -1102,7 +1101,7 @@ diff -uprN iperf-2.0.9.orig/src/ReportCSV.c iperf-2.0.9/src/ReportCSV.c
  
 diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
 --- iperf-2.0.9.orig/src/Reporter.c	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/src/Reporter.c	2017-02-13 09:20:40.588232999 +0900
++++ iperf-2.0.9/src/Reporter.c	2017-02-13 14:57:14.494666316 +0900
 @@ -63,6 +63,12 @@
  extern "C" {
  #endif
@@ -1127,7 +1126,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
          }
          if ( multihdr != NULL ) {
              memset( multihdr, 0, sizeof(MultiHeader) );
-@@ -166,6 +174,12 @@ MultiHeader* InitMulti( thread_Settings
+@@ -166,6 +174,13 @@ MultiHeader* InitMulti( thread_Settings
                  data->mode = agent->mReportMode;
                  data->info.mFormat = agent->mFormat;
                  data->info.mTTL = agent->mTTL;
@@ -1136,11 +1135,12 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
 +                data->info.pcpu[1] = agent->pcpu[1];
 +                data->info.pcpu[2] = agent->pcpu[2];
 +                data->info.pcpu[3] = agent->pcpu[3];
++                data->info.pcpu[4] = agent->pcpu[4];
 +
  		if (data->mThreadMode == kMode_Server) 
  		    data->info.tcp.read.binsize = data->mBufLen / 8;
                  if ( isEnhanced( agent ) ) {
-@@ -230,6 +244,7 @@ ReportHeader* InitReport( thread_Setting
+@@ -230,6 +245,7 @@ ReportHeader* InitReport( thread_Setting
           */
          reporthdr = malloc( sizeof(ReportHeader) +
                              NUM_REPORT_STRUCTS * sizeof(ReportStruct) );
@@ -1148,7 +1148,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
          if ( reporthdr != NULL ) {
              // Only need to make sure the headers are clean
              memset( reporthdr, 0, sizeof(ReportHeader));
-@@ -255,6 +270,12 @@ ReportHeader* InitReport( thread_Setting
+@@ -255,6 +271,13 @@ ReportHeader* InitReport( thread_Setting
              data->mode = agent->mReportMode;
              data->info.mFormat = agent->mFormat;
              data->info.mTTL = agent->mTTL;
@@ -1157,11 +1157,12 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
 +            data->info.pcpu[1] = agent->pcpu[1];
 +            data->info.pcpu[2] = agent->pcpu[2];
 +            data->info.pcpu[3] = agent->pcpu[3];
++            data->info.pcpu[4] = agent->pcpu[4];
 +
  	    if (data->mThreadMode == kMode_Server) 
  		data->info.tcp.read.binsize = data->mBufLen / 8;
              if ( isUDP( agent ) ) {
-@@ -278,6 +299,7 @@ ReportHeader* InitReport( thread_Setting
+@@ -278,6 +301,7 @@ ReportHeader* InitReport( thread_Setting
               * Create in one big chunk
               */
              reporthdr = malloc( sizeof(ReportHeader) );
@@ -1169,7 +1170,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
              if ( reporthdr != NULL ) {
                  // Only need to make sure the headers are clean
                  memset( reporthdr, 0, sizeof(ReportHeader));
-@@ -459,6 +481,7 @@ void ReportSettings( thread_Settings *ag
+@@ -459,6 +483,7 @@ void ReportSettings( thread_Settings *ag
           * Create in one big chunk
           */
          ReportHeader *reporthdr = malloc( sizeof(ReportHeader) );
@@ -1177,7 +1178,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
      
          if ( reporthdr != NULL ) {
              ReporterData *data = &reporthdr->report;
-@@ -485,6 +508,12 @@ void ReportSettings( thread_Settings *ag
+@@ -485,6 +510,13 @@ void ReportSettings( thread_Settings *ag
              data->connection.size_local = agent->size_local;
              data->mUDPRate = agent->mUDPRate;
              data->mUDPRateUnits = agent->mUDPRateUnits;
@@ -1186,11 +1187,12 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
 +            data->info.pcpu[1] = agent->pcpu[1];
 +            data->info.pcpu[2] = agent->pcpu[2];
 +            data->info.pcpu[3] = agent->pcpu[3];
++            data->info.pcpu[4] = agent->pcpu[4];
 +
      #ifdef HAVE_THREAD
              /*
               * Update the ReportRoot to include this report.
-@@ -519,6 +548,7 @@ void ReportServerUDP( thread_Settings *a
+@@ -519,6 +551,7 @@ void ReportServerUDP( thread_Settings *a
           * Create in one big chunk
           */
          ReportHeader *reporthdr = malloc( sizeof(ReportHeader) );
@@ -1198,7 +1200,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
          Transfer_Info *stats = &reporthdr->report.info;
  
          if ( reporthdr != NULL ) {
-@@ -558,6 +588,15 @@ void ReportServerUDP( thread_Settings *a
+@@ -558,6 +591,16 @@ void ReportServerUDP( thread_Settings *a
              stats->IPGsum = ntohl( server->IPGsum );
  
              stats->mUDP = (char)kMode_Server;
@@ -1207,6 +1209,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
 +            stats->pcpu[1] = (double)ntohl(server->pcpu[1]);
 +            stats->pcpu[2] = (double)ntohl(server->pcpu[2]);
 +            stats->pcpu[3] = (double)ntohl(server->pcpu[3]);
++            stats->pcpu[4] = (double)ntohl(server->pcpu[4]);
 +            DEBUGP("%s[%d]: ", __FILE__, __LINE__);
 +            DEBUGP("pcpu: [0]=%u, [1]=%u, [2]=%u, [3]=%u\n",
 +                   stats->pcpu[0] , stats->pcpu[1] , stats->pcpu[2], stats->pcpu[3]);
@@ -1214,7 +1217,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
              reporthdr->report.connection.peer = agent->local;
              reporthdr->report.connection.size_peer = agent->size_local;
              reporthdr->report.connection.local = agent->peer;
-@@ -590,6 +629,7 @@ void ReportServerUDP( thread_Settings *a
+@@ -590,6 +633,7 @@ void ReportServerUDP( thread_Settings *a
   * This function is the loop that the reporter thread processes
   */
  void reporter_spawn( thread_Settings *thread ) {
@@ -1222,7 +1225,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
      do {
          // This section allows for safe exiting with Ctrl-C
          Condition_Lock ( ReportCond );
-@@ -624,6 +664,7 @@ again:
+@@ -624,6 +668,7 @@ again:
                  }
                  // finished with report so free it
                  free( temp );
@@ -1230,7 +1233,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
                  Condition_Unlock ( ReportCond );
                  Condition_Signal( &ReportDoneCond );
                  if (ReportRoot)
-@@ -685,7 +726,9 @@ again:
+@@ -685,7 +730,9 @@ again:
  void process_report ( ReportHeader *report ) {
      if ( report != NULL ) {
          if ( reporter_process_report( report ) ) {
@@ -1240,7 +1243,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
          }
      }
  }
-@@ -694,6 +737,7 @@ void process_report ( ReportHeader *repo
+@@ -694,6 +741,7 @@ void process_report ( ReportHeader *repo
   * Process reports starting with "reporthdr"
   */
  int reporter_process_report ( ReportHeader *reporthdr ) {
@@ -1248,7 +1251,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
      int need_free = 0;
  
      // Recursively process reports
-@@ -702,7 +746,9 @@ int reporter_process_report ( ReportHead
+@@ -702,7 +750,9 @@ int reporter_process_report ( ReportHead
              // If we are done with this report then free it
              ReportHeader *temp = reporthdr->next;
              reporthdr->next = reporthdr->next->next;
@@ -1258,7 +1261,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
          }
      }
  
-@@ -757,6 +803,7 @@ int reporter_process_report ( ReportHead
+@@ -757,6 +807,7 @@ int reporter_process_report ( ReportHead
   * Updates connection stats
   */
  int reporter_handle_packet( ReportHeader *reporthdr ) {
@@ -1266,7 +1269,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
      ReportStruct *packet = &reporthdr->data[reporthdr->reporterindex];
      ReporterData *data = &reporthdr->report;
      Transfer_Info *stats = &reporthdr->report.info;
-@@ -896,7 +943,9 @@ int reporter_handle_packet( ReportHeader
+@@ -896,7 +947,9 @@ int reporter_handle_packet( ReportHeader
   * Handles summing of threads
   */
  void reporter_handle_multiple_reports( MultiHeader *reporthdr, Transfer_Info *stats, int force ) {
@@ -1276,7 +1279,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
          if ( reporthdr->threads > 1 ) {
              int i;
              Transfer_Info *current = NULL;
-@@ -929,6 +978,12 @@ void reporter_handle_multiple_reports( M
+@@ -929,6 +982,13 @@ void reporter_handle_multiple_reports( M
  		current->IPGsum = stats->IPGsum;
  		current->mUDP = stats->mUDP;
  		current->mTCP = stats->mTCP;
@@ -1285,11 +1288,12 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
 +                current->pcpu[1] = stats->pcpu[1];
 +                current->pcpu[2] = stats->pcpu[2];
 +                current->pcpu[3] = stats->pcpu[3];
++                current->pcpu[4] = stats->pcpu[4];
 +
  		if (stats->mTCP == kMode_Server) {
  		    int ix;
  		    current->tcp.read.cntRead = stats->tcp.read.cntRead;
-@@ -984,6 +1039,7 @@ void reporter_handle_multiple_reports( M
+@@ -984,6 +1044,7 @@ void reporter_handle_multiple_reports( M
  
  #ifdef HAVE_STRUCT_TCP_INFO_TCPI_TOTAL_RETRANS
  static void gettcpistats (ReporterData *stats) {
@@ -1297,7 +1301,7 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
      struct tcp_info tcp_internal;
      socklen_t tcp_info_length = sizeof(struct tcp_info);
      int retry;
-@@ -1113,25 +1169,31 @@ int reporter_condprintstats( ReporterDat
+@@ -1113,25 +1174,31 @@ int reporter_condprintstats( ReporterDat
   * appropriate dispatch function
   */
  int reporter_print( ReporterData *stats, int type, int end ) {
@@ -1331,13 +1335,14 @@ diff -uprN iperf-2.0.9.orig/src/Reporter.c iperf-2.0.9/src/Reporter.c
          default:
 diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
 --- iperf-2.0.9.orig/src/Server.cpp	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/src/Server.cpp	2017-02-13 09:20:40.592232999 +0900
-@@ -68,6 +68,18 @@
++++ iperf-2.0.9/src/Server.cpp	2017-02-13 15:30:02.398666316 +0900
+@@ -68,6 +68,19 @@
  #include <sys/mman.h>
  #endif
  
 +#include <sys/time.h>
 +#include <sys/resource.h>
++#include <sys/sysinfo.h>
 +
 +#ifdef _DEBUG
 +#define DEBUGP(fmt, ...)    printf(fmt, ## __VA_ARGS__)
@@ -1345,13 +1350,13 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
 +#define DEBUGP(fmt, ...)
 +#endif
 +
-+static void cpu_util(uint32_t pcpu[3]);
-+uint32_t g_pcpu[4] = {0};
++static void cpu_util(uint32_t pcpu[5]);
++uint32_t g_pcpu[5] = {0};
 +
  /* -------------------------------------------------------------------
   * Stores connected socket and socket info.
   * ------------------------------------------------------------------- */
-@@ -78,6 +90,8 @@ Server::Server( thread_Settings *inSetti
+@@ -78,6 +91,8 @@ Server::Server( thread_Settings *inSetti
  
      // initialize buffer
      mBuf = new char[ mSettings->mBufLen ];
@@ -1360,7 +1365,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
      FAIL_errno( mBuf == NULL, "No memory for buffer\n", mSettings );
  }
  
-@@ -87,11 +101,16 @@ Server::Server( thread_Settings *inSetti
+@@ -87,11 +102,16 @@ Server::Server( thread_Settings *inSetti
  
  Server::~Server() {
      if ( mSettings->mSock != INVALID_SOCKET ) {
@@ -1378,7 +1383,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
  }
  
  void Server::Sig_Int( int inSigno ) {
-@@ -128,7 +147,32 @@ void Server::Run( void ) {
+@@ -128,7 +148,32 @@ void Server::Run( void ) {
      message.msg_controllen = sizeof(ctrl);
  #endif
  
@@ -1411,7 +1416,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
      if ( reportstruct != NULL ) {
          reportstruct->packetID = 0;
          mSettings->reporthdr = InitReport( mSettings );
-@@ -184,6 +228,9 @@ void Server::Run( void ) {
+@@ -184,6 +229,9 @@ void Server::Run( void ) {
  	    mEndTime.setnow();
  	    mEndTime.add( mSettings->mAmount / 100.0 );
  	}
@@ -1421,7 +1426,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
          do {
  	    reportstruct->emptyreport=0;
  #if HAVE_DECL_SO_TIMESTAMP
-@@ -272,6 +319,12 @@ void Server::Run( void ) {
+@@ -272,6 +320,12 @@ void Server::Run( void ) {
              }
          } while (running); 
                  
@@ -1434,7 +1439,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
          // stop timing 
          gettimeofday( &(reportstruct->packetTime), NULL );
          
-@@ -288,16 +341,42 @@ void Server::Run( void ) {
+@@ -288,16 +342,43 @@ void Server::Run( void ) {
              // send back an acknowledgement of the terminating datagram 
              write_UDP_AckFIN( ); 
          }
@@ -1460,7 +1465,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
 +        reportstruct = NULL;
 +    }
      EndReport( mSettings->reporthdr );
-+
++    /*
 +#ifdef HAVE_SCHED_SETSCHEDULER
 +    if (0 <= mSettings->mAffinity) {
 +        cpu_set_t cpu_set;
@@ -1476,10 +1481,11 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
 +        }
 +    }
 +#endif
++    */
  } 
  // end Recv 
  
-@@ -309,8 +388,8 @@ void Server::Run( void ) {
+@@ -309,8 +390,8 @@ void Server::Run( void ) {
   * ------------------------------------------------------------------- */ 
  
  void Server::write_UDP_AckFIN( ) {
@@ -1490,7 +1496,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
  
      fd_set readSet; 
      FD_ZERO( &readSet ); 
-@@ -321,10 +400,14 @@ void Server::write_UDP_AckFIN( ) {
+@@ -321,10 +402,14 @@ void Server::write_UDP_AckFIN( ) {
      while ( count < 10 ) {
          count++; 
  
@@ -1506,7 +1512,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
  
          if ( mSettings->mBufLen > (int) ( sizeof( UDP_datagram )
                                            + sizeof( server_hdr ) ) ) {
-@@ -356,10 +439,20 @@ void Server::write_UDP_AckFIN( ) {
+@@ -356,10 +441,21 @@ void Server::write_UDP_AckFIN( ) {
              hdr->cntTransit   = htonl( stats->transit.totcntTransit );
  	    hdr->IPGcnt = htonl( (long) (stats->cntDatagrams / (stats->endTime - stats->startTime)));
  	    hdr->IPGsum = htonl(1);
@@ -1515,6 +1521,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
 +            hdr->pcpu[1]    = htonl((uint32_t)mSettings->pcpu[1]);
 +            hdr->pcpu[2]    = htonl((uint32_t)mSettings->pcpu[2]);
 +            hdr->pcpu[3]    = htonl((uint32_t)mSettings->pcpu[3]);
++            hdr->pcpu[4]    = htonl((uint32_t)mSettings->pcpu[4]);
          }
 +        DEBUGP("%s[%d]: ", __FILE__, __LINE__);
 +        DEBUGP("pcpu: [0]=%u, [1]=%u, [2]=%u, [3]=%u\n", hdr->pcpu[0] , hdr->pcpu[1] , hdr->pcpu[2], hdr->pcpu[3]);
@@ -1528,7 +1535,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
  
          // wait until the socket is readable, or our timeout expires 
          FD_SET( mSettings->mSock, &readSet ); 
-@@ -379,6 +472,7 @@ void Server::write_UDP_AckFIN( ) {
+@@ -379,6 +475,7 @@ void Server::write_UDP_AckFIN( ) {
              if ( rc <= 0 ) {
                  // Connection closed or errored
                  // Stop using it.
@@ -1536,12 +1543,12 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
                  return;
              }
          } 
-@@ -388,3 +482,63 @@ void Server::write_UDP_AckFIN( ) {
+@@ -388,3 +485,69 @@ void Server::write_UDP_AckFIN( ) {
  } 
  // end write_UDP_AckFIN 
  
 +static void
-+cpu_util(uint32_t pcpu[4])
++cpu_util(uint32_t pcpu[5])
 +{
 +    DEBUGP("%s[%d]: %s\n", __FILE__, (int)__LINE__, __func__);
 +    static struct timeval last;
@@ -1554,6 +1561,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
 +    uint32_t timediff;
 +    uint32_t userdiff;
 +    uint32_t systemdiff;
++    //struct sysinfo info;
 +
 +    if (pcpu == NULL) {
 +        DEBUGP("%s[%d]: %s NULL\n", __FILE__, (int)__LINE__, __func__);
@@ -1566,6 +1574,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
 +    gettimeofday(&temp, NULL);
 +    ctemp = clock();
 +    getrusage(RUSAGE_SELF, &rtemp);
++    //sysinfo(&info);
 +
 +    diff = ctemp - clast;
 +    timediff = ((temp.tv_sec * 1000000.0 + temp.tv_usec) -
@@ -1578,11 +1587,15 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
 +    pcpu[1] = timediff;
 +    pcpu[2] = userdiff;
 +    pcpu[3] = systemdiff;
++    //pcpu[4] = (uint32_t)info.totalram;
++    pcpu[4] = (uint32_t)rtemp.ru_maxrss;
 +
 +    g_pcpu[0] = pcpu[0];
 +    g_pcpu[1] = pcpu[1];
 +    g_pcpu[2] = pcpu[2];
 +    g_pcpu[3] = pcpu[3];
++    //g_pcpu[4] = (uint32_t)info.totalram;
++    g_pcpu[4] = (uint32_t)rtemp.ru_maxrss;
 +
 +#ifdef _DEBUG
 +    double dtimediff = ((temp.tv_sec * 1000000.0 + temp.tv_usec) -
@@ -1602,7 +1615,7 @@ diff -uprN iperf-2.0.9.orig/src/Server.cpp iperf-2.0.9/src/Server.cpp
 +}
 diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
 --- iperf-2.0.9.orig/src/Settings.cpp	2016-06-07 03:48:21.000000000 +0900
-+++ iperf-2.0.9/src/Settings.cpp	2017-02-13 09:20:40.592232999 +0900
++++ iperf-2.0.9/src/Settings.cpp	2017-02-13 14:57:40.710666316 +0900
 @@ -71,6 +71,12 @@
  
  #include "gnu_getopt.h"
@@ -1624,7 +1637,15 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
  {0, 0, 0, 0}
  };
  
-@@ -237,25 +244,39 @@ void Settings_Initialize( thread_Setting
+@@ -167,6 +174,7 @@ const struct option env_options[] =
+ {"IPERF_IPV6_DOMAIN",      no_argument, NULL, 'V'},
+ {"IPERF_SUGGEST_WIN_SIZE", required_argument, NULL, 'W'},
+ {"IPERF_CONGESTION_CONTROL",  required_argument, NULL, 'Z'},
++{"IPERF_AFFINITY",  required_argument, NULL, 'A'},
+ {0, 0, 0, 0}
+ };
+ 
+@@ -237,25 +245,40 @@ void Settings_Initialize( thread_Setting
      //main->mDomain     = kMode_IPv4;    // -V,
      //main->mSuggestWin = false;         // -W,  Suggest the window size.
  
@@ -1634,6 +1655,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
 +    main->pcpu[1] = 0;
 +    main->pcpu[2] = 0;
 +    main->pcpu[3] = 0;
++    main->pcpu[4] = 0;
 +
  } // end Settings
  
@@ -1664,7 +1686,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
          strcpy( (*into)->mFileName, from->mFileName );
      }
      // Zero out certain entries
-@@ -269,11 +290,36 @@ void Settings_Copy( thread_Settings *fro
+@@ -269,11 +292,36 @@ void Settings_Copy( thread_Settings *fro
   * ------------------------------------------------------------------- */
  
  void Settings_Destroy( thread_Settings *mSettings) {
@@ -1706,7 +1728,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
  } // end ~Settings
  
  /* -------------------------------------------------------------------
-@@ -320,6 +366,9 @@ void Settings_Interpret( char option, co
+@@ -320,6 +368,9 @@ void Settings_Interpret( char option, co
      char *results = NULL;
      max_size_t theNum;
      char suffix='\0';
@@ -1716,7 +1738,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
  
      switch ( option ) {
          case '1': // Single Client
-@@ -329,9 +378,9 @@ void Settings_Interpret( char option, co
+@@ -329,9 +380,9 @@ void Settings_Interpret( char option, co
              Settings_GetLowerCaseArg(optarg,outarg);
  	    // scan for PPS units, just look for 'p' as that's good enough
  #ifdef HAVE_QUAD_SUPPORT
@@ -1728,7 +1750,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
  #endif
  	    if (suffix == 'p') {
  		mExtSettings->mUDPRateUnits = kRate_PPS;
-@@ -350,6 +399,8 @@ void Settings_Interpret( char option, co
+@@ -350,6 +401,8 @@ void Settings_Interpret( char option, co
  
          case 'c': // client mode w/ server host to connect to
              mExtSettings->mHost = new char[ strlen( optarg ) + 1 ];
@@ -1737,7 +1759,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
              strcpy( mExtSettings->mHost, optarg );
  
              if ( mExtSettings->mThreadMode == kMode_Unknown ) {
-@@ -443,6 +494,7 @@ void Settings_Interpret( char option, co
+@@ -443,6 +496,7 @@ void Settings_Interpret( char option, co
          case 'o' : // output the report and other messages into the file
              unsetSTDOUT( mExtSettings );
              mExtSettings->mOutputFileName = new char[strlen(optarg)+1];
@@ -1745,7 +1767,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
              strcpy( mExtSettings->mOutputFileName, optarg);
              break;
  
-@@ -563,19 +615,26 @@ void Settings_Interpret( char option, co
+@@ -563,19 +617,26 @@ void Settings_Interpret( char option, co
              // more esoteric options
          case 'B': // specify bind address
  	    parsedopts = new char[ strlen( optarg ) + 1 ];
@@ -1773,7 +1795,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
              // Test for Multicast
              iperf_sockaddr temp;
              SockAddr_setHostname( mExtSettings->mLocalhost, &temp,
-@@ -607,6 +666,7 @@ void Settings_Interpret( char option, co
+@@ -607,6 +668,7 @@ void Settings_Interpret( char option, co
  
              setFileInput( mExtSettings );
              mExtSettings->mFileName = new char[strlen(optarg)+1];
@@ -1781,7 +1803,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
              strcpy( mExtSettings->mFileName, optarg);
              break;
  
-@@ -619,6 +679,7 @@ void Settings_Interpret( char option, co
+@@ -619,6 +681,7 @@ void Settings_Interpret( char option, co
              setFileInput( mExtSettings );
              setSTDIN( mExtSettings );
              mExtSettings->mFileName = new char[strlen("<stdin>")+1];
@@ -1789,7 +1811,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
              strcpy( mExtSettings->mFileName,"<stdin>");
              break;
  
-@@ -701,12 +762,46 @@ void Settings_Interpret( char option, co
+@@ -701,12 +764,46 @@ void Settings_Interpret( char option, co
  #ifdef TCP_CONGESTION
  	    setCongestionControl( mExtSettings );
  	    mExtSettings->mCongestion = new char[strlen(optarg)+1];
@@ -1836,7 +1858,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
          default: // ignore unknown
              break;
      }
-@@ -744,6 +839,8 @@ void Settings_GenerateListenerSettings(
+@@ -744,6 +841,8 @@ void Settings_GenerateListenerSettings(
      if ( !isCompat( client ) && 
           (client->mMode == kTest_DualTest || client->mMode == kTest_TradeOff) ) {
          *listener = new thread_Settings;
@@ -1845,7 +1867,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
          memcpy(*listener, client, sizeof( thread_Settings ));
          setCompat( (*listener) );
          unsetDaemon( (*listener) );
-@@ -758,14 +855,15 @@ void Settings_GenerateListenerSettings(
+@@ -758,14 +857,15 @@ void Settings_GenerateListenerSettings(
          (*listener)->mOutputFileName = NULL;
          (*listener)->mMode       = kTest_Normal;
          (*listener)->mThreadMode = kMode_Listener;
@@ -1869,7 +1891,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
      } else {
          *listener = NULL;
      }
-@@ -786,6 +884,8 @@ void Settings_GenerateClientSettings( th
+@@ -786,6 +886,8 @@ void Settings_GenerateClientSettings( th
      int flags = ntohl(hdr->flags);
      if ( (flags & HEADER_VERSION1) != 0 ) {
          *client = new thread_Settings;
@@ -1878,7 +1900,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
          memcpy(*client, server, sizeof( thread_Settings ));
          setCompat( (*client) );
          (*client)->mTID = thread_zeroid();
-@@ -822,9 +922,12 @@ void Settings_GenerateClientSettings( th
+@@ -822,9 +924,12 @@ void Settings_GenerateClientSettings( th
          (*client)->mThreadMode = kMode_Client;
          if ( server->mLocalhost != NULL ) {
              (*client)->mLocalhost = new char[strlen( server->mLocalhost ) + 1];
@@ -1891,7 +1913,7 @@ diff -uprN iperf-2.0.9.orig/src/Settings.cpp iperf-2.0.9/src/Settings.cpp
          if ( ((sockaddr*)&server->peer)->sa_family == AF_INET ) {
              inet_ntop( AF_INET, &((sockaddr_in*)&server->peer)->sin_addr, 
                         (*client)->mHost, REPORT_ADDRLEN);
-@@ -847,6 +950,8 @@ void Settings_GenerateClientSettings( th
+@@ -847,6 +952,8 @@ void Settings_GenerateClientSettings( th
   * This should be an inverse operation of GenerateSpeakerSettings
   */
  void Settings_GenerateClientHdr( thread_Settings *client, client_hdr *hdr ) {
