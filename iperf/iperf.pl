@@ -345,6 +345,7 @@ sub _csv_to_hash_udp {
         'user'      => $d[14] || '',
         'sys'       => $d[15] || '',
         'total'     => $d[16] || '',
+        'memory'    => $d[17] || '',
     );
 
     return %hash;
@@ -365,6 +366,7 @@ sub _csv_to_hash_tcp {
         'user'      => $d[9]  || '',
         'sys'       => $d[10] || '',
         'total'     => $d[11] || '',
+        'memory'    => $d[12] || '',
     );
 
     return %hash;
@@ -447,7 +449,7 @@ sub iperf3 {
               . 'bytes,bits_per_second,jitter_ms,'
               . 'lost_packets,packets,lost_percent,'
               . 'host_total,host_user,host_system,'
-              . 'remote_total,remote_user,remote_system,command'
+              . 'remote_total,remote_user,remote_system,memory,command'
         );
     }
     else {
@@ -459,7 +461,7 @@ sub iperf3 {
               . 'bytes,bits_per_second,retransmits,'
               . 'start,end,seconds,bytes,bits_per_second,'
               . 'host_total,host_user,host_system,'
-              . 'remote_total,remote_user,remote_system,command'
+              . 'remote_total,remote_user,remote_system,memory,command'
         );
     }
 
@@ -557,8 +559,9 @@ sub iperf2 {
     $options .= ' -M ' . $opt{'set-mss'} if ( defined( $opt{'set-mss'} ) );
     $options .= ' -y c';
 
-    my ( %bps,     %lost,     %user,     %sys,     %total )     = ();
-    my ( %bpsfile, %lostfile, %userfile, %sysfile, %totalfile ) = ();
+    my ( %bps, %lost, %user, %sys, %total, %memory ) = ();
+    my ( %bpsfile, %lostfile, %userfile, %sysfile, %totalfile, %memoryfile ) =
+      ();
     my %csvfile = ();
 
     $bpsfile{'file'} =
@@ -571,6 +574,8 @@ sub iperf2 {
       'iperf_cpu_sys_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
     $totalfile{'file'} =
       'iperf_cpu_total_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
+    $memoryfile{'file'} =
+      'iperf_memory_chart_' . $process . '_' . $opt{'time'} . 's' . '.csv';
 
     if ( $opt{'udp'} ) {
         $csvfile{'file'} =
@@ -643,19 +648,21 @@ sub iperf2 {
 
             my %csv = ();
             if ( $opt{'udp'} ) {
-                %csv                          = _csv_to_hash_udp(@data);
-                $bps{ $bps->{'bps'} }{$len}   = $csv{'bandwidth'};
-                $lost{ $bps->{'bps'} }{$len}  = $csv{'percent'};
-                $user{ $bps->{'bps'} }{$len}  = $csv{'user'};
-                $sys{ $bps->{'bps'} }{$len}   = $csv{'sys'};
-                $total{ $bps->{'bps'} }{$len} = $csv{'total'};
+                %csv                           = _csv_to_hash_udp(@data);
+                $bps{ $bps->{'bps'} }{$len}    = $csv{'bandwidth'};
+                $lost{ $bps->{'bps'} }{$len}   = $csv{'percent'};
+                $user{ $bps->{'bps'} }{$len}   = $csv{'user'};
+                $sys{ $bps->{'bps'} }{$len}    = $csv{'sys'};
+                $total{ $bps->{'bps'} }{$len}  = $csv{'total'};
+                $memory{ $bps->{'bps'} }{$len} = $csv{'memory'};
             }
             else {
-                %csv                          = _csv_to_hash_tcp(@data);
-                $bps{ $bps->{'bps'} }{$len}   = $csv{'bandwidth'};
-                $user{ $bps->{'bps'} }{$len}  = $csv{'user'};
-                $sys{ $bps->{'bps'} }{$len}   = $csv{'sys'};
-                $total{ $bps->{'bps'} }{$len} = $csv{'total'};
+                %csv                           = _csv_to_hash_tcp(@data);
+                $bps{ $bps->{'bps'} }{$len}    = $csv{'bandwidth'};
+                $user{ $bps->{'bps'} }{$len}   = $csv{'user'};
+                $sys{ $bps->{'bps'} }{$len}    = $csv{'sys'};
+                $total{ $bps->{'bps'} }{$len}  = $csv{'total'};
+                $memory{ $bps->{'bps'} }{$len} = $csv{'memory'};
             }
             $csvdata =
                 $bps->{'bps'} . ','
@@ -682,19 +689,22 @@ sub iperf2 {
         @{ $lostfile{'data'} } = _chart( \%lost );
         print "\nlost packet percent chart:\n" if ( $opt{'vorbis'} );
         _output( \%lostfile );
+        @{ $userfile{'data'} } = _chart( \%user );
+        print "\ncpu user chart:\n" if ( $opt{'vorbis'} );
+        _output( \%userfile );
+
+        @{ $sysfile{'data'} } = _chart( \%sys );
+        print "\ncpu sys chart:\n" if ( $opt{'vorbis'} );
+        _output( \%sysfile );
+
+        @{ $totalfile{'data'} } = _chart( \%total );
+        print "\ncpu total chart:\n" if ( $opt{'vorbis'} );
+        _output( \%totalfile );
+
+        @{ $memoryfile{'data'} } = _chart( \%memory );
+        print "\nmemory chart:\n" if ( $opt{'vorbis'} );
+        _output( \%memoryfile );
     }
-
-    @{ $userfile{'data'} } = _chart( \%user );
-    print "\ncpu user chart:\n" if ( $opt{'vorbis'} );
-    _output( \%userfile );
-
-    @{ $sysfile{'data'} } = _chart( \%sys );
-    print "\ncpu sys chart:\n" if ( $opt{'vorbis'} );
-    _output( \%sysfile );
-
-    @{ $totalfile{'data'} } = _chart( \%total );
-    print "\ncpu total chart:\n" if ( $opt{'vorbis'} );
-    _output( \%totalfile );
 }
 
 # サーバ
