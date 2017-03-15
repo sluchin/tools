@@ -3,7 +3,7 @@
 dir=`date "+%Y%m%d%H%M%S"`"-spec"
 mkdir $dir
 
-dmesg > "$dirdmesg.log"
+dmesg > "$dir/dmesg.log"
 ifconfig -a > "$dir/ifconfig.log"
 ethtool eth0 > "$dir/ethtool.log"
 cat /proc/cpuinfo > "$dir/cpuinfo.log"
