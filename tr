@@ -1,0 +1,847 @@
+#!/bin/sh
+#
+# Tracer data log acquisition tool
+
+ARGV="$@"
+ARGC="$#"
+PROGNAME=`basename $0`
+PROCNO=$$
+
+# Exit status
+EXIT_SUCCESS=0
+EXIT_FAILURE=1
+
+# Function return code
+STATUS_OK=0
+STATUS_NG=1
+STATUS_ARG_ERROR=2
+STATUS_NO_DELETE=3
+
+# Boolean value
+TRUE=1
+FALSE=0
+
+# Mongo db information
+HOSTNAME="localhost" # default value
+PORTNO=27017         # default value
+[ -n "${MONGO_URL}" ] && HOSTNAME="${MONGO_URL}"
+DBNAME="mmp"         # fixed value
+PREFIX="trace"       # fixed value
+QUERYCOUNT=20       # default value
+[ -n "${SHELL_BATCH_SIZE}" ] && QUERYCOUNT="${SHELL_BATCH_SIZE}"
+
+# Option flag
+VERBOSE=$FALSE
+FORCE=$FALSE
+
+# Mongo command
+MONGO="mongo"
+MONGOFILES="mongofiles"
+
+# Version infomation
+VERSION="1.0"
+
+#######################################
+# Output error log message.
+# Arguments:
+#   Error number
+#   Error messages
+# Outputs:
+#   Writes location to stderr.
+# Returns:
+#   Only success
+#######################################
+print_error()
+{
+    errno="$1"; shift
+    args="$@"
+    echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $PROGNAME: Error: $args ($errno)" >&2
+    return $STATUS_OK
+}
+
+#######################################
+# Check for the existence of a command.
+# Arguments:
+#   Commands
+# Returns:
+#   0 if the existence of a command.
+#######################################
+test_command()
+{
+    args="$@"
+    found=1
+    for cmd in "$@"
+    do
+        which $cmd > /dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            print_error "$cmd command not found"
+            found=0
+        fi
+    done
+    if [ $found -eq 0 ]; then
+        return $STATUS_NG
+    fi
+    return $STATUS_OK
+}
+
+#######################################
+# Check for option argumant.
+# Arguments:
+#   Short option or long option
+#   Option argument
+# Returns:
+#   0 Success
+#   2 Optarg starts with a hyphen.
+#######################################
+test_optarg()
+{
+    option="$1"
+    optarg="$2"
+
+    first=`echo x$optarg | cut -c2`
+    if [ "x$first" = "x-" ]; then
+        print_error $? "option requires an argument -- $option"
+        return $STATUS_ARG_ERROR
+    fi
+    return $STATUS_OK
+}
+
+#######################################
+# Check for type.
+# Arguments:
+#   Type [1-3]
+# Returns:
+#   0 Success
+#   1 Not a number or range check error.
+#######################################
+test_type()
+{
+    arg=$1
+
+    if [ -z $arg ]; then
+        return $STATUS_OK
+    fi
+
+    # Whether it is a numerical value
+    if [ -n "`echo $arg | sed 's/[[:digit:]]//g'`" ]; then
+        print_error $? "invalid type: type=$arg"
+        return $STATUS_NG
+    fi
+
+    # Numerical check (1 < type < 3)
+    if [ 1 -lt $arg ] || [ $arg -gt 3 ]; then
+        print_error $? "invalid type: type=$arg"
+        return $STATUS_NG
+    fi
+    return $STATUS_OK
+}
+
+#######################################
+# Check for date.
+# Arguments:
+#   Date
+# Returns:
+#   0 Success
+#   1 Not a number or not in date format.
+#######################################
+test_date()
+{
+    arg=$1
+    errno=$STATUS_OK
+
+    if [ -z $arg ]; then
+        return $STATUS_OK
+    fi
+
+    # Whether it is a numerical value
+    if [ -n "`echo $arg | sed 's/[[:digit:]]//g'`" ]; then
+        print_error $? "invalid date: date=$arg"
+        return $STATUS_NG
+    fi
+
+    # Check count of string
+    count=`echo -n $arg | wc -c`
+    if [ $count -ne 8 ]; then
+        echo "invalid date $arg"
+        return $STATUS_NG
+    fi
+
+    # Check string of date
+    date -d "$arg" > /dev/null 2>&1
+    errno=$?
+    if [ $errno -ne 0 ]; then
+        echo "invalid date $arg"
+        return $STATUS_NG
+    fi
+    return $STATUS_OK
+}
+
+#######################################
+# Check for start and end.
+# Arguments:
+#   Start YYYYMMDD
+#   End   YYYYMMDD
+# Returns:
+#   0 Success
+#   1 Start is greater than end
+#######################################
+test_start_end()
+{
+    start="$1" end="$2"
+    errno=$STATUS_OK
+
+    test_date $str
+    errno=$?
+    [ $errno -ne $STATUS_OK ] && return $STATUS_NG
+    test_date $end
+    errno=$?
+    [ $errno -ne $STATUS_OK ] && return $STATUS_NG
+
+    if [ -z $start ] || [ -z $end ]; then
+        return $STATUS_OK
+    fi
+
+    # start > end
+    if [ $start -gt $end ]; then
+        echo "Invalid arguments ($start > $end)"
+        return $STATUS_NG
+    fi
+    return $STATUS_OK
+}
+
+#######################################
+# Execution mongo command.
+# Arguments:
+#   Eval string
+# Outputs:
+#   Output command line to stderr,
+#      when verbose mode or error.
+# Returns:
+#   mongo command return code.
+#######################################
+exec_mongo()
+{
+    args="$@"
+    errno=$STATUS_OK
+
+    if [ $VERBOSE -eq $TRUE ]; then
+        echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]:" $MONGO \
+            --quiet --host="$HOSTNAME" --port="$PORTNO" "$DBNAME" \
+            --eval "DBQuery.shellBatchSize=$QUERYCOUNT;$args" >&2
+        $MONGO \
+            --quiet --host="$HOSTNAME" --port="$PORTNO" "$DBNAME" \
+            --eval "DBQuery.shellBatchSize=$QUERYCOUNT;$args"
+        errno=$?
+    else
+        $MONGO \
+            --quiet --host="$HOSTNAME" --port="$PORTNO" "$DBNAME" \
+            --eval "DBQuery.shellBatchSize=$QUERYCOUNT;$args" 2> /dev/null
+        errno=$?
+    fi
+    if [ $errno -ne $STATUS_OK ]; then
+        print_error $errno "$MONGO failure: "                 \
+            "$mongo --quiet --host=\"$HOSTNAME\" "            \
+            "\"$DBNAME\" --eval \"DBQuery.shellBatchSize="    \
+            "$QUERYCOUNT;$eval\""
+    fi
+    exit $errno
+}
+
+#######################################
+# Execution mongofiles command.
+# Arguments:
+#   Command
+#   File
+# Outputs:
+#   Output command line to stderr,
+#      when verbose mode or error.
+# Returns:
+#   mongofiles command return code.
+#######################################
+exec_mongofiles()
+{
+    cmd="$1" file="$2"
+    errno=$STATUS_OK
+
+    if [ $VERBOSE -eq $TRUE ]; then
+        echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]:" $MONGOFILES \
+            --quiet --host="$HOSTNAME" --port="$PORTNO" \
+            --db="$DBNAME" --prefix="$PREFIX" $cmd $file >&2
+        $MONGOFILES \
+            --quiet --host="$HOSTNAME" --port="$PORTNO" \
+            --db="$DBNAME" --prefix="$PREFIX" $cmd $file
+        errno=$?
+    else
+        $MONGOFILES \
+            --quiet --host="$HOSTNAME" --port="$PORTNO" \
+            --db="$DBNAME" --prefix="$PREFIX" $cmd $file > /dev/null 2>&1
+        errno=$?
+    fi
+    if [ $errno -ne $STATUS_OK ]; then
+        print_error $errno \
+            "$MONGOFILES failure: "                        \
+            "$MONGOFILES --quiet --host=\"$HOSTNAME\" "    \
+            "--db=\"$DBNAME\" --prefix=\"$PREFIX\"         \
+            $cmd $file"
+    fi
+    return $errno
+}
+
+#######################################
+# Set the DBQuery.shellBatchSize.
+# Globals:
+#   QUERYCOUNT
+# Arguments:
+#   None
+# Returns:
+#   0 Success
+#######################################
+set_query_count()
+{
+    eval="db.$PREFIX.files.find({},{\"_id\":0,\"filename\":1}).count()"
+    count=`$MONGO \
+        --quiet --host="$HOSTNAME" --port="$PORTNO" "$DBNAME" \
+        --eval "$eval"`
+    if [ "$count" -gt "$QUERYCOUNT" ]; then
+        QUERYCOUNT=`expr $count + 10` # 10 is margin
+    fi
+    return $STATUS_OK
+}
+
+#######################################
+# Display the list of files.
+# Arguments:
+#   None
+# Outputs:
+#   Writes location to stdout.
+# Returns:
+#   0 Success
+#   non-zero on mongo command error.
+#######################################
+display_list()
+{
+    errno=$STATUS_OK
+    set_query_count
+    eval="db.$PREFIX.files.find({},{\"_id\":0,\"filename\":1})"
+    files=`exec_mongo "$eval"`
+    errno=$?
+    if [ $errno -ne $STATUS_OK ]; then
+        return $errno
+    fi
+
+    OLDIFS=$IFS IFS="}"
+    echo $files | while read file
+    do
+        IFS=$OLDIFS
+        if [ -n "$file" ]; then
+            if [ "$file" != "Type \"it\" for more" ]; then
+                echo $file | awk '/"filename"/{print $4}' | sed 's/^.*"\(.*\)".*$/\1/'
+            else
+                # Do not pass
+                echo "more..."
+                echo "    The maximum number of files has been exceeded: max=$QUERYCOUNT"
+            fi
+        fi
+    done
+    return $STATUS_OK
+}
+
+#######################################
+# Delete files.
+# Arguments:
+#   Files with comma separate.
+# Returns:
+#   0 Success
+#######################################
+delete_log_by_file()
+{
+    files="$1"
+
+    OLDIFS=$IFS IFS=,
+    set -- $files
+    for file in "$@"
+    do
+        exec_mongofiles delete $file
+    done
+    IFS=$OLDIFS
+    return $STATUS_OK
+}
+
+#######################################
+# Delete all.
+# Arguments:
+#   None
+# Returns:
+#   0 Success
+#   non-zero on mongo command error.
+#   non-zero on mongofiles command error.
+#######################################
+delete_all()
+{
+    errno=$STATUS_OK
+
+    if [ $FORCE -eq $FALSE ]; then
+        while :
+        do
+            echo -n "Delete all. Is it OK ? (Y/n) "
+            read input
+            case "$input" in
+                [Yy]|[Yy][Ee][Ss]) break ;;
+                [Nn]|[Nn][Oo]) return $STATUS_NO_DELETE ;;
+            esac
+        done
+    fi
+
+    # Exec mongo command
+    set_QUERYCOUNT
+    eval="db.$PREFIX.files.find({},{\"_id\":0,\"filename\":1})"
+    files=`exec_mongo "$eval"`
+    errno=$?
+    if [ $errno -ne $STATUS_OK ]; then
+        return $error
+    fi
+
+    # Files Processing
+    OLDIFS=$IFS IFS="}"
+    echo $files | while read file
+    do
+       IFS=$OLDIFS
+       if [ -n "$file" ]; then
+            if [ "$file" != "Type \"it\" for more" ]; then
+                file='echo $file | awk '/"filename"/{print $4}' | sed 's/^.*"\(.*\)".*$/\1/''
+                exec_mongofiles delete $file
+                errno=$?
+                if [ $errno -ne $STATUS_OK ]; then
+                    return $error
+                fi
+            else
+                # Do not pass
+                echo "more..."
+                echo "    The maximum number of files has been exceeded: max=$QUERYCOUNT"
+            fi
+        fi
+    done
+    return $STATUS_OK
+}
+
+#######################################
+# Get the file(s).
+# Arguments:
+#   Files with comma separate.
+# Returns:
+#   0 Success
+#   non-zero on mongofiles command error.
+#######################################
+get_file_by_file()
+{
+    files="$1"
+    errno=$STATUS_OK
+
+    OLDIFS=$IFS IFS=,
+    set -- $files
+    for file in "$@"
+    do
+        exec_mongofiles get $file
+        errno=$?
+        if [ $errno -ne $STATUS_OK ]; then
+            return $errno
+        fi
+    done
+    IFS=$OLDIFS
+    return $STATUS_OK
+}
+
+#######################################
+# Get files.
+# Arguments:
+#   start,end,type
+#   (YYYYMMDD,YYYYMMDD,[1-3])
+# Returns:
+#   0 Success
+#   non-zero on mongo command error.
+#   non-zero on mongofiles command error.
+#######################################
+get_file_from_start_to_end_by_type()
+{
+    # Comma separated for optional argument
+    arg="$1"
+    errno=$STATUS_OK
+
+    # Split the argument with a comma
+    OLDIFS=$IFS IFS=,
+    set -- $arg
+    str="$1" end="$2" typ="$3"
+    IFS=$OLDIFS
+
+    # Check arguments
+    test_type $typ
+    errno=$?
+    [ $errno -ne $STATUS_OK ] && return $STATUS_NG
+    test_start_end $str $end
+    errno=$?
+    [ $errno -ne $STATUS_OK ] && return $STATUS_NG
+
+    # Make eval string
+    set_query_count
+    eval="db.$PREFIX.files.find({"
+    if [ -n "$str" ] || [ -n "$end" ]; then
+        eval=$eval"\"metadata.datetime\":{"
+        if [ -n "$str" ]; then
+            eval=$eval"\"\$gte\":ISODate($str),"
+        fi
+        if [ -n "$end" ]; then
+            eval=$eval"\"\$lte\":ISODate($end),"
+        fi
+        eval=`echo $eval | sed 's/,$//'` # delete comma at the end
+        eval=$eval"},"
+    fi
+    if [ -n "$typ" ]; then
+        eval=$eval"\"metadata.type\":$typ,"
+    fi
+    eval=`echo $eval | sed 's/,$//'` # delete comma at the end
+    eval=$eval"},{\"_id\":0,\"filename\":1})"
+
+    # Exec mongo command
+    files=`exec_mongo "$eval"`
+    errno=$?
+    if [ $errno -ne $STATUS_OK ]; then
+        return $errno
+    fi
+
+    # Files Processing
+    OLDIFS=$IFS; IFS="}"
+    echo $files | while read file
+    do
+        IFS=$OLDIFS
+        if [ -n "$file" ]; then
+            if [ "$file" != "Type \"it\" for more" ]; then
+    	        file=`echo $file | awk '/"filename"/{print $4}' | sed 's/^.*"\(.*\)".*$/\1/'`
+                errno=$?
+	            exec_mongofiles get $file
+                if [ $errno -ne $STATUS_OK ]; then
+                    return $errno
+                fi
+            else
+                # Do not pass
+                echo "more..."
+                echo "    The maximum number of files has been exceeded: max=$QUERYCOUNT"
+            fi
+        fi
+    done
+    return $STATUS_OK
+}
+
+#######################################
+# Put the files.
+# Arguments:
+#   Type
+#   Files (dirname/*)
+# Returns:
+#   0 Success
+#   non-zero on mongo command error.
+#   non-zero on mongofiles command error.
+#######################################
+save()
+{
+    typ="$1"; shift
+    args="$@"
+    errno=$STATUS_OK
+
+    test_type $typ
+    [ $? -ne $STATUS_OK ] && return $STATUS_NG
+
+    for file in $args
+    do
+        cur=`pwd`
+        if [ -d "`dirname $file`" ]; then
+            cd `dirname $file`
+        fi
+        if [ -f "`basename $file`" ]; then
+            echo "file=`basename $file`"
+            exec_mongofiles "put" "`basename $file`"
+            errno=$?
+            if [ $errno -ne $STATUS_OK ]; then
+                return $errno
+            fi
+
+            eval="DBQuery.shellBatchSize=$QUERYCOUNT;"
+            eval=$eval"db.$PREFIX.files.update({\"filename\":\"`basename $file`\"},"
+            eval=$eval"{"\$set":{\"metadata.type\":\"$typ\",\"metadata.datetime\":ISODate()}})"
+            exec_mongo $eval
+            if [ $errno -ne $STATUS_OK ]; then
+                return $errno
+            fi
+        fi
+        cd $cur
+     done
+    return $STATUS_OK
+}
+
+#######################################
+# Print help.
+# Arguments:
+#   None
+# Outputs:
+#   Writes location to stdout.
+#######################################
+print_help()
+{
+cat <<EOF
+$PROGNAME: Tracer data log acquisition tool
+
+Usage:
+    -H, --host    hostname
+			Set host name. (default localhost)
+    -p, --port    portno
+			Set port number. (default 27017)
+    -f, --force
+			Don't confirm when delete all logs.
+    -l, --list
+			View file list.
+    -d, --delete    filename[,filename,…]
+			Delete by specifying the file name.
+    -D, --delete-all
+			Delete all logs.
+    -o, --output    filename[,filename,…]
+			Transfer by specifying a file name.
+    -t, --type    type
+			Transfer by specifying the type.
+    -s, --start    YYYYMMDD
+			Transfer by specifying the start date and time.
+    -e, --end      YYYYMMDD
+			Transfer by specifying the end date and time.
+    -v, --verbose
+			Verbose mode.
+    -h, --help
+			Display this help.
+    -V, --version
+			Display version.
+EOF
+    return
+}
+
+#######################################
+# Print version.
+# Arguments:
+#   None
+# Outputs:
+#   Writes location to stdout.
+#######################################
+print_version()
+{
+    echo $PROGNAME: $VERSION
+    return
+}
+
+#######################################
+# Parse options.
+# Arguments:
+#   Shortoptions string
+#   Longoptions string
+#   Arguments
+# Outputs:
+#   Writes location to stdout.
+# Returns:
+#   getopt function return code.
+#   exit command for sub shell.
+#######################################
+parse_options()
+{
+    shortopts="$1"; shift
+    longopts="$1"; shift
+    args="$@"
+    param=""
+    errno=$STATUS_OK
+    opt_test=$STATUS_OK
+
+    getopt -T > /dev/null 2>&1
+    opt_test=$?
+    if [ $opt_test -eq 4 ]; then
+        # GNU enhanced getopt is available
+        param=`getopt -n "$PROGNAME" \
+            -l "$longopts" -o "$shortopts" -- $args`
+        errno=$?
+    else
+        # Original getopt is available
+        # no long option names, no whitespace, no sorting
+        param=`getopt "$shortopts" $args`
+        errno=$?
+    fi
+    echo $param
+    exit $errno
+}
+
+#######################################
+# Interactive mode
+# Arguments:
+#   None
+# Outputs:
+#   Writes location to stdout.
+#######################################
+interactive_mode()
+{
+    echo "Interactive shell: $ARGC"
+}
+
+# main function
+main_function()
+{
+    errno=$STATUS_OK
+
+    # Check the existance of command
+    test_command $MONGO $MONGOFILES
+    errno=$?
+    if [ $errno -ne $STATUS_OK ]; then
+        exit $STATUS_NG
+    fi
+
+    shortopts="H:p:fld:Do:t:s:e:vhV"
+    longopts="host:,port:,force,list,delete:,delete-all,output:,"
+    longopts=$longopts"type:,start:,end:,verbose,help,version,save"
+    param=`parse_options $shortopts $longopts "$ARGV"`
+    errno=$?
+    if [ $errno -ne $STATUS_OK ]; then
+        exit $errno
+    fi
+
+    eval set -- $param
+    while [ $# -gt 0 ]
+    do
+        case "$1" in
+            "-H" | "--host")
+                HOSTNAME="$2"
+                test_optarg "$1" "$HOSTNAME"
+                errno=$?
+                [ $errno -ne $STATUS_OK ] && exit $EXIT_FAILURE
+                shift
+                ;;
+            "-p" | "--port")
+                PORTNO="$2"
+                test_optarg "$1" "$PORTNO"
+                errno=$?
+                [ $errno -ne $STATUS_OK ] && exit $EXIT_FAILURE
+                shift
+                ;;
+            "--") shift; break;;
+        esac
+        shift
+    done
+
+    d_opt=""; o_opt=""
+    s_opt=""; e_opt=""; t_opt=""
+    save_opt=""
+    interactive=$TRUE
+
+    eval set -- $param
+    while [ $# -gt 0 ]
+    do
+        case "$1" in
+            "-H" | "--host") shift ;;
+            "-p" | "--port") shift ;;
+            "-f" | "--force")
+                FORCE=$TRUE
+                interactive=$FALSE
+                ;;
+            "-l" | "--list")
+                display_list
+                errno=$?
+                [ $errno -ne $STATUS_OK ] && exit $errno
+                interactive=$FALSE
+                ;;
+            "-d" | "--delete")
+                d_opt="$2"
+                test_optarg "$1" "$d_opt"
+                errno=$?
+                [ $errno -ne $STATUS_OK ] && exit $EXIT_FAILURE
+                delete_log_by_file $d_opt
+                errno=$?
+                [ $errno -ne $STATUS_OK ] && exit $errno
+                interactive=$FALSE
+                shift
+                ;;
+            "-D" | "--delete-all")
+                delete_all
+                errno=$?
+                [ $errno -ne $STATUS_OK ] && exit $errno
+                interactive=$FALSE
+                ;;
+            "-o" | "--output")
+                o_opt="$2"
+                test_optarg "$1" "$o_opt"
+                errno=$?
+                [ $errno -ne $STATUS_OK ] && exit $EXIT_FAILURE
+                get_file_by_file $o_opt
+                errno=$?
+                [ $errno -ne $STATUS_OK ] && exit $errno
+                interactive=$FALSE
+                shift
+                ;;
+            "-t" | "--type")
+                t_opt="$2"
+                test_optarg "$1" "$t_opt"
+                errno=$?
+                [ $errno -ne $STATUS_OK ] && exit $EXIT_FAILURE
+                interactive=$FALSE
+                shift
+                ;;
+            "-s" | "--start")
+                s_opt="$2"
+                test_optarg "$1" "$s_opt"
+                errno=$?
+                [ $errno -ne $STATUS_OK ] && exit $EXIT_FAILURE
+                interactive=$FALSE
+                shift
+                ;;
+            "-e" | "--end")
+                e_opt="$2"
+                test_optarg "$1" "$e_opt"
+                errno=$?
+                [ $errno -ne $STATUS_OK ] && exit $EXIT_FAILURE
+                interactive=$FALSE
+                shift
+                ;;
+            "-v" | "--verbose")
+                VERBOSE=$TRUE
+                interactive=$FALSE
+                ;;
+            "-h" | "--help")
+                print_help
+                interactive=$FALSE
+                ;;
+            "-V" | "--version")
+                print_version
+                interactive=$FALSE
+                ;;
+            "--save") # for debug
+                save_opt="$2"
+                test_optarg "$1" "$save_opt"
+                errno=$?
+                [ $errno -ne $STATUS_OK ] && exit $EXIT_FAILURE
+                interactive=$FALSE
+                ;;
+            "--") shift; break;;
+        esac
+        shift
+    done
+
+    if [ $interactive -eq $TRUE ]; then
+        # Interactive shell
+        interactive_mode
+    else
+        if [ -n "$save_opt" ]; then
+            [ -z "$t_opt" ] && t_opt="1"
+            save "$t_opt" "$save_opt"
+            errno=$?
+            [ $errno -ne $STATUS_OK ] && exit $errno
+        fi
+        if [ -n "$s_opt" ] || [ -n "$e_opt" ] || [ -n "$t_opt" ]; then
+            get_file_from_start_to_end_by_type "$s_opt,$e_opt,$t_opt"
+            errno=$?
+            [ $errno -ne $STATUS_OK ] && exit $errno
+        fi
+    fi
+
+    exit $EXIT_SUCCESS
+}
+
+main_function
