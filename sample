@@ -1,0 +1,431 @@
+■サンプル(mongodbへ書き出し)	
+	#include <mongoc/mongoc.h>
+	#include <stdio.h>
+	#include <stdlib.h>
+	#include <fcntl.h>
+	#include "zlib.h"
+	
+	// snprintf(outdata, sizeof(outdata), "%s%s%s.o",
+	//          cmddata.nmhead,
+	//          Nedby_trclist.trc_tbl[trc_cnt].name,
+	//          cmddata.nmtail);
+	// void mongodb_write(Nedby_trclist.trc_tbl[trc_cnt].a_trcarea,
+	//                    Nedby_trclist.trc_tbl[trc_cnt].trc_size,
+	//                    outdata);
+	// @param[in] buf      構造体
+	// @param[in] size     構造体のサイズ
+	// @param[in] filename ファイル名
+	void mongodb_write(void *buf, const size_t size, const char *filename)
+	{
+	    FILE *in  = NULL;
+	    FILE *def = NULL;
+	    bson_error_t error;
+	    bson_t metadata;
+	    mongoc_gridfs_file_opt_t opt = {0};
+	    mongoc_stream_t *stream;
+	    mongoc_gridfs_t *gridfs;
+	
+	    const char *uri_string = "mongodb://127.0.0.1:27017/?appname=gridfs-example";
+	    mongoc_client_t *client = mongoc_client_new_from_uri(uri);
+	
+	    const char *db = "test";    // データベース名
+	    gridfs = mongoc_client_get_gridfs(client, db, NULL, &error);
+	    if (!gridfs) {
+	       fprintf(stderr, "%s\n", error.message);
+	       return EXIT_FAILURE;
+	    }
+	
+	    in = fmemopen(buf, size, "r");
+	    if (!in) {
+	       fprintf(stderr, "fmemopen error\n");
+	       return EXIT_FAILURE;
+	    }
+	
+	    size_t defsize = (size_t)compressBound((uLong)size);
+	    unsigned char *defbuf = (unsigned char *)malloc(defsize);
+	    if (defbuf == NULL) {
+	       fprintf(stderr, "malloc error\n");
+	       return EXIT_FAILURE;
+	    }
+	
+	    def = fmemopen(defbuf, defsize, "r");
+	    if (!def) {
+	       fprintf(stderr, "fmemopen error\n");
+	       return EXIT_FAILURE;
+	    }
+	
+	    // 圧縮
+	    if (def(in, def, Z_DEFAULT_COMPRESSION) != Z_OK) {
+	       fprintf(stderr, "deflate error\n");
+	       return EXIT_FAILURE;
+	    }
+	    
+	    stream = mongoc_stream_file_new(fileno(def));
+	    if (!stream) {
+	       fprintf(stderr, "mongoc_stream_file_new error\n");
+	       return EXIT_FAILURE;
+	    }
+	
+	    opt.filename = filename;
+	    file = mongoc_gridfs_create_file_from_stream(gridfs, stream, &opt);
+	    if (!file) {
+	       fprintf(stderr, "mongoc_gridfs_create_file_from_stream error\n");
+	       return EXIT_FAILURE;
+	    }
+	
+	    bson_init(&metadata);
+	    BSON_APPEND_DATE_TIME(&metadata, "datetime", time(NULL));
+	
+	    if (!mongoc_gridfs_file_set_metadata (file, &metadata)) {
+	       fprintf(stderr, "%s\n", error.message);
+	       return EXIT_FAILURE;
+	    }
+	
+	    if (!mongoc_gridfs_file_save(file)) {
+	       mongoc_gridfs_file_error(file, &error);
+	       fprintf(stderr, "Could not save: %s\n", error.message);
+	       return EXIT_FAILURE;
+	    }
+	
+	    free(defbuf);
+	    mongoc_stream_destroy(stream);
+	    mongoc_gridfs_file_destroy(file);
+	}
+	
+■サンプル(mongodbから読み出し)	
+	// @param[in] filename ファイル名
+	void mongodb_read(const char *filename)
+	{
+	    FILE *out = NULL;
+	    FILE *inf = NULL;
+	    bson_error_t error;
+	    bson_value_t id;
+	    mongoc_gridfs_file_opt_t opt = {0};
+	    mongoc_stream_t *stream;
+	    mongoc_gridfs_t *gridfs;
+	    ssize_t r;
+	
+	    const char *uri_string = "mongodb://127.0.0.1:27017/?appname=gridfs-example";
+	    mongoc_client_t *client = mongoc_client_new_from_uri(uri);
+	
+	    const char *db = "test";    // データベース名
+	    gridfs = mongoc_client_get_gridfs(client, db, NULL, &error);
+	    if (!gridfs) {
+	       fprintf(stderr, "%s\n", error.message);
+	       return EXIT_FAILURE;
+	    }
+	
+	    file = mongoc_gridfs_find_one_by_filename (gridfs, filename, &error);
+	    if (!stream) {
+	        fprintf(stderr, "mongoc_gridfs_find_one_by_filename error\n");
+	        return EXIT_FAILURE;
+	    }
+	
+	    stream = mongoc_stream_gridfs_new(file);
+	    if (!stream) {
+	        fprintf(stderr, "mongoc_stream_gridfs_new error\n");
+	        return EXIT_FAILURE;
+	    }
+	
+	    out = fopen(filename, "r+");
+	    if (!out) {
+	        fprintf(stderr, "fopen error\n");
+	        return EXIT_FAILURE;
+	    }
+	
+	    for (;;) {
+	       r = mongoc_stream_readv(stream, &iov, 1, -1, 0);
+	       if (r < 0) {
+	           fprintf(stderr, "fopen error\n");
+	           return EXIT_FAILURE;
+	       }
+	
+	       if (r == 0) {
+	           break;
+	       }
+	
+	       // ファイルへ書き込み
+	       if (fwrite(iov.iov_base, 1, r, out) != r) {
+	           MONGOC_ERROR("Failed to write to file. Exiting.\n");
+	           return EXIT_FAILURE;
+	       }
+	    }
+	    if (!fflash(out)) {
+	       fprintf(stderr, "fflash error\n");
+	       return EXIT_FAILURE;
+	    }
+	
+	    mongoc_stream_destroy(stream);
+	    mongoc_gridfs_file_destroy(file);
+	}
+	
+■サンプル(mongodbからファイル名リストを取得)	
+	// param[out] list 取得したファイル名のリスト
+	// param[in]  size リストのサイズ
+	void mongodb_list(char *list[], size_t size)
+	{
+	    bson_t filter;
+	    bson_t opts;
+	    bson_t filter_child;
+	    bson_t opts_child;
+	    bson_error_t error;
+	    mongoc_gridfs_t *gridfs;
+	    mongoc_gridfs_file_t *file;
+	    mongoc_gridfs_file_list_t *list;
+	    const int MAX_FILENAME_SIZE = 256;
+	
+	    const char *uri_string = "mongodb://127.0.0.1:27017/?appname=gridfs-example";
+	    mongoc_client_t *client = mongoc_client_new_from_uri(uri);
+	
+	    const char *db = "test";    // データベース名
+	    gridfs = mongoc_client_get_gridfs(client, db, NULL, &error);
+	    if (!gridfs) {
+	       fprintf(stderr, "%s\n", error.message);
+	       return EXIT_FAILURE;
+	    }
+	
+	    // filenameの先頭にTRACEを含む
+	    // db.users.find({filename:{$regex:/^TRACE/});
+	    bson_init(&filter);
+	    BSON_APPEND_DOCUMENT_BEGIN(&filter, "filename", &filter_child);
+	    BSON_APPEND_UTF8(&filter_child, "$regex", "/^TRACE/");
+	    bson_append_document_end(&filter, &filter_child);
+	
+	    // filenameの昇順で取得する
+	    // db.users.find({}).sort({filename: 1});
+	    bson_init(&opts);
+	    BSON_APPEND_DOCUMENT_BEGIN(&opts, "sort", &opts_child);
+	    BSON_APPEND_INT32(&opts_child, "filename", 1);
+	    bson_append_document_end(&opts, &opts_child);
+	
+	    // filter: A bson_t containing the query to execute.
+	    // opts: A bson_t query options, including sort order and which fields to return. Can be NULL.
+	    list = mongoc_gridfs_find_with_opts(gridfs, &filter, &opts);
+	
+	    bson_destroy(&filter);
+	    bson_destroy(&opts);
+	
+	    size_t count = 0;
+	    while ((file = mongoc_gridfs_file_list_next(list))) {
+	       const char *name = mongoc_gridfs_file_get_filename(file);
+	       printf("%s\n", name ? name : "?");
+	       snprintf(*list[count++], MAX_FILENAME_SIZE, "%s", name ? name : "");
+	       mongoc_gridfs_file_destroy(file);
+	
+	       if (size <= count)
+	           break;
+	    }
+	
+	    mongoc_gridfs_file_list_destroy(list);
+	}
+	
+■サンプル(mongodbからファイル削除)	
+	// param[in]  dt 削除する日時を指定
+	void mongodb_delete_file(time_t dt)
+	{
+	    mongoc_gridfs_file_list_t *list;
+	    mongoc_gridfs_file_t *file;
+	    bson_t filter;
+	    bson_t child;
+	    bson_t opts;
+	    bson_error_t error;
+	    mongoc_gridfs_t *gridfs;
+	    mongoc_gridfs_file_t *file;
+	    mongoc_gridfs_file_list_t *list;
+	
+	    const char *uri_string = "mongodb://127.0.0.1:27017/?appname=gridfs-example";
+	    mongoc_client_t *client = mongoc_client_new_from_uri(uri);
+	
+	    const char *db = "test";    // データベース名
+	    gridfs = mongoc_client_get_gridfs(client, db, NULL, &error);
+	    if (!gridfs) {
+	       fprintf(stderr, "%s\n", error.message);
+	       return EXIT_FAILURE;
+	    }
+	
+	    // db.users.find({metadata:{datetime:{"$lt":ISODate("2022-03-14T14:00:00+09:00")}}});
+	    bson_init(&filter);
+	    BSON_APPEND_DOCUMENT_BEGIN(&filter, "metadata.datetime", &child);
+	    BSON_APPEND_DATE_TIME(&child, "$lt", dt);
+	    bson_append_document_end(&filter, &child);
+	
+	    // db.users.find({}).sort({filename: 1});
+	    bson_init(&opts);
+	    BSON_APPEND_DOCUMENT_BEGIN(&opts, "sort", &child);
+	    BSON_APPEND_INT32(&child, "filename", 1);
+	    bson_append_document_end(&opts, &child);
+	
+	    list = mongoc_gridfs_find_with_opts(gridfs, &filter, &opts);
+	    bson_destroy(&filter);
+	    bson_destroy(&opts);
+	
+	    while ((file = mongoc_gridfs_file_list_next(list))) {
+	       mongoc_gridfs_file_remove(file);
+	
+	       mongoc_gridfs_file_destroy(file);
+	    }
+	
+	    mongoc_gridfs_file_list_destroy(list);
+	}
+	
+■サンプル(圧縮)	
+	#include <stdio.h>
+	#include <string.h>
+	#include <assert.h>
+	#include "zlib.h"
+	
+	#if defined(MSDOS) || defined(OS2) || defined(WIN32) || defined(__CYGWIN__)
+	#  include <fcntl.h>
+	#  include <io.h>
+	#  define SET_BINARY_MODE(file) setmode(fileno(file), O_BINARY)
+	#else
+	#  define SET_BINARY_MODE(file)
+	#endif
+	
+	#define CHUNK 16384
+	
+	/* Compress from file source to file dest until EOF on source.
+	   def() returns Z_OK on success, Z_MEM_ERROR if memory could not be
+	   allocated for processing, Z_STREAM_ERROR if an invalid compression
+	   level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
+	   version of the library linked do not match, or Z_ERRNO if there is
+	   an error reading or writing the files. */
+	int def(FILE *source, FILE *dest, int level)
+	{
+	    int ret, flush;
+	    unsigned have;
+	    z_stream strm;
+	    unsigned char in[CHUNK];
+	    unsigned char out[CHUNK];
+	
+	    /* allocate deflate state */
+	    strm.zalloc = Z_NULL;
+	    strm.zfree = Z_NULL;
+	    strm.opaque = Z_NULL;
+	    ret = deflateInit(&strm, level);
+	    if (ret != Z_OK)
+	        return ret;
+	
+	    /* compress until end of file */
+	    do {
+	        strm.avail_in = fread(in, 1, CHUNK, source);
+	        if (ferror(source)) {
+	            (void)deflateEnd(&strm);
+	            return Z_ERRNO;
+	        }
+	        flush = feof(source) ? Z_FINISH : Z_NO_FLUSH;
+	        strm.next_in = in;
+	
+	        /* run deflate() on input until output buffer not full, finish
+	           compression if all of source has been read in */
+	        do {
+	            strm.avail_out = CHUNK;
+	            strm.next_out = out;
+	            ret = deflate(&strm, flush);    /* no bad return value */
+	            assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
+	            have = CHUNK - strm.avail_out;
+	            if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
+	                (void)deflateEnd(&strm);
+	                return Z_ERRNO;
+	            }
+	        } while (strm.avail_out == 0);
+	        assert(strm.avail_in == 0);     /* all input will be used */
+	
+	        /* done when last data in file processed */
+	    } while (flush != Z_FINISH);
+	    assert(ret == Z_STREAM_END);        /* stream will be complete */
+	
+	    /* clean up and return */
+	    (void)deflateEnd(&strm);
+	    return Z_OK;
+	}
+	
+■サンプル(解凍)	
+	/* Decompress from file source to file dest until stream ends or EOF.
+	   inf() returns Z_OK on success, Z_MEM_ERROR if memory could not be
+	   allocated for processing, Z_DATA_ERROR if the deflate data is
+	   invalid or incomplete, Z_VERSION_ERROR if the version of zlib.h and
+	   the version of the library linked do not match, or Z_ERRNO if there
+	   is an error reading or writing the files. */
+	int inf(FILE *source, FILE *dest)
+	{
+	    int ret;
+	    unsigned have;
+	    z_stream strm;
+	    unsigned char in[CHUNK];
+	    unsigned char out[CHUNK];
+	
+	    /* allocate inflate state */
+	    strm.zalloc = Z_NULL;
+	    strm.zfree = Z_NULL;
+	    strm.opaque = Z_NULL;
+	    strm.avail_in = 0;
+	    strm.next_in = Z_NULL;
+	    ret = inflateInit(&strm);
+	    if (ret != Z_OK)
+	        return ret;
+	
+	    /* decompress until deflate stream ends or end of file */
+	    do {
+	        strm.avail_in = fread(in, 1, CHUNK, source);
+	        if (ferror(source)) {
+	            (void)inflateEnd(&strm);
+	            return Z_ERRNO;
+	        }
+	        if (strm.avail_in == 0)
+	            break;
+	        strm.next_in = in;
+	
+	        /* run inflate() on input until output buffer not full */
+	        do {
+	            strm.avail_out = CHUNK;
+	            strm.next_out = out;
+	            ret = inflate(&strm, Z_NO_FLUSH);
+	            assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
+	            switch (ret) {
+	            case Z_NEED_DICT:
+	                ret = Z_DATA_ERROR;     /* and fall through */
+	            case Z_DATA_ERROR:
+	            case Z_MEM_ERROR:
+	                (void)inflateEnd(&strm);
+	                return ret;
+	            }
+	            have = CHUNK - strm.avail_out;
+	            if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
+	                (void)inflateEnd(&strm);
+	                return Z_ERRNO;
+	            }
+	        } while (strm.avail_out == 0);
+	
+	        /* done when inflate() says it's done */
+	    } while (ret != Z_STREAM_END);
+	
+	    /* clean up and return */
+	    (void)inflateEnd(&strm);
+	    return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
+	}
+	
+	/* report a zlib or i/o error */
+	void zerr(int ret)
+	{
+	    fputs("zpipe: ", stderr);
+	    switch (ret) {
+	    case Z_ERRNO:
+	        if (ferror(stdin))
+	            fputs("error reading stdin\n", stderr);
+	        if (ferror(stdout))
+	            fputs("error writing stdout\n", stderr);
+	        break;
+	    case Z_STREAM_ERROR:
+	        fputs("invalid compression level\n", stderr);
+	        break;
+	    case Z_DATA_ERROR:
+	        fputs("invalid or incomplete deflate data\n", stderr);
+	        break;
+	    case Z_MEM_ERROR:
+	        fputs("out of memory\n", stderr);
+	        break;
+	    case Z_VERSION_ERROR:
+	        fputs("zlib version mismatch!\n", stderr);
+	    }
+	}
