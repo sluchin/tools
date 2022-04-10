@@ -1,0 +1,1814 @@
+diff --color -uprN zlib-1.2.12_orig/Makefile zlib-1.2.12/Makefile
+--- zlib-1.2.12_orig/Makefile	2022-03-28 08:05:02.000000000 +0900
++++ zlib-1.2.12/Makefile	2022-04-06 23:10:53.953134752 +0900
+@@ -1,5 +1,408 @@
+-all:
+-	-@echo "Please use ./configure first.  Thank you."
++# Makefile for zlib
++# Copyright (C) 1995-2017 Jean-loup Gailly, Mark Adler
++# For conditions of distribution and use, see copyright notice in zlib.h
+ 
+-distclean:
+-	make -f Makefile.in distclean
++# To compile and test, type:
++#    ./configure; make test
++# Normally configure builds both a static and a shared library.
++# If you want to build just a static library, use: ./configure --static
++
++# To use the asm code, type:
++#    cp contrib/asm?86/match.S ./match.S
++#    make LOC=-DASMV OBJA=match.o
++
++# To install /usr/local/lib/libz.* and /usr/local/include/zlib.h, type:
++#    make install
++# To install in $HOME instead of /usr/local, use:
++#    make install prefix=$HOME
++
++CC=gcc
++
++CFLAGS=-O3 -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN
++#CFLAGS=-O -DMAX_WBITS=14 -DMAX_MEM_LEVEL=7
++#CFLAGS=-g -DZLIB_DEBUG
++#CFLAGS=-O3 -Wall -Wwrite-strings -Wpointer-arith -Wconversion \
++#           -Wstrict-prototypes -Wmissing-prototypes
++
++SFLAGS=-O3 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN
++LDFLAGS=
++TEST_LDFLAGS=-L. libz.a
++LDSHARED=gcc -shared -Wl,-soname,libz.so.1,--version-script,zlib.map
++CPP=gcc -E
++
++STATICLIB=libz.a
++SHAREDLIB=libz.so
++SHAREDLIBV=libz.so.1.2.12
++SHAREDLIBM=libz.so.1
++LIBS=$(STATICLIB) $(SHAREDLIBV)
++
++AR=ar
++ARFLAGS=rc
++RANLIB=ranlib
++LDCONFIG=ldconfig
++LDSHAREDLIBC=-lc
++TAR=tar
++SHELL=/bin/sh
++EXE=
++
++prefix =/usr/local
++exec_prefix =${prefix}
++libdir =${exec_prefix}/lib
++sharedlibdir =${libdir}
++includedir =${prefix}/include
++mandir =${prefix}/share/man
++man3dir = ${mandir}/man3
++pkgconfigdir = ${libdir}/pkgconfig
++SRCDIR=
++ZINC=
++ZINCOUT=-I.
++
++OBJZ = adler32.o crc32.o deflate.o infback.o inffast.o inflate.o inftrees.o trees.o zutil.o
++OBJG = compress.o uncompr.o gzclose.o gzlib.o gzread.o gzwrite.o
++OBJC = $(OBJZ) $(OBJG)
++
++PIC_OBJZ = adler32.lo crc32.lo deflate.lo infback.lo inffast.lo inflate.lo inftrees.lo trees.lo zutil.lo
++PIC_OBJG = compress.lo uncompr.lo gzclose.lo gzlib.lo gzread.lo gzwrite.lo
++PIC_OBJC = $(PIC_OBJZ) $(PIC_OBJG)
++
++# to use the asm code: make OBJA=match.o, PIC_OBJA=match.lo
++OBJA =
++PIC_OBJA =
++
++OBJS = $(OBJC) $(OBJA)
++
++PIC_OBJS = $(PIC_OBJC) $(PIC_OBJA)
++
++all: static shared all64
++
++static: example$(EXE) minigzip$(EXE)
++
++shared: examplesh$(EXE) minigzipsh$(EXE)
++
++all64: example64$(EXE) minigzip64$(EXE)
++
++check: test
++
++test: all teststatic testshared test64
++
++teststatic: static
++	@TMPST=tmpst_$$; \
++	if echo hello world | ./minigzip | ./minigzip -d && ./example $$TMPST ; then \
++	  echo '		*** zlib test OK ***'; \
++	else \
++	  echo '		*** zlib test FAILED ***'; false; \
++	fi
++	@rm -f tmpst_$$
++
++testshared: shared
++	@LD_LIBRARY_PATH=`pwd`:$(LD_LIBRARY_PATH) ; export LD_LIBRARY_PATH; \
++	LD_LIBRARYN32_PATH=`pwd`:$(LD_LIBRARYN32_PATH) ; export LD_LIBRARYN32_PATH; \
++	DYLD_LIBRARY_PATH=`pwd`:$(DYLD_LIBRARY_PATH) ; export DYLD_LIBRARY_PATH; \
++	SHLIB_PATH=`pwd`:$(SHLIB_PATH) ; export SHLIB_PATH; \
++	TMPSH=tmpsh_$$; \
++	if echo hello world | ./minigzipsh | ./minigzipsh -d && ./examplesh $$TMPSH; then \
++	  echo '		*** zlib shared test OK ***'; \
++	else \
++	  echo '		*** zlib shared test FAILED ***'; false; \
++	fi
++	@rm -f tmpsh_$$
++
++test64: all64
++	@TMP64=tmp64_$$; \
++	if echo hello world | ./minigzip64 | ./minigzip64 -d && ./example64 $$TMP64; then \
++	  echo '		*** zlib 64-bit test OK ***'; \
++	else \
++	  echo '		*** zlib 64-bit test FAILED ***'; false; \
++	fi
++	@rm -f tmp64_$$
++
++infcover.o: $(SRCDIR)test/infcover.c $(SRCDIR)zlib.h zconf.h
++	$(CC) $(CFLAGS) $(ZINCOUT) -c -o $@ $(SRCDIR)test/infcover.c
++
++infcover: infcover.o libz.a
++	$(CC) $(CFLAGS) -o $@ infcover.o libz.a
++
++cover: infcover
++	rm -f *.gcda
++	./infcover
++	gcov inf*.c
++
++libz.a: $(OBJS)
++	$(AR) $(ARFLAGS) $@ $(OBJS)
++	-@ ($(RANLIB) $@ || true) >/dev/null 2>&1
++
++match.o: match.S
++	$(CPP) match.S > _match.s
++	$(CC) -c _match.s
++	mv _match.o match.o
++	rm -f _match.s
++
++match.lo: match.S
++	$(CPP) match.S > _match.s
++	$(CC) -c -fPIC _match.s
++	mv _match.o match.lo
++	rm -f _match.s
++
++example.o: $(SRCDIR)test/example.c $(SRCDIR)zlib.h zconf.h
++	$(CC) $(CFLAGS) $(ZINCOUT) -c -o $@ $(SRCDIR)test/example.c
++
++minigzip.o: $(SRCDIR)test/minigzip.c $(SRCDIR)zlib.h zconf.h
++	$(CC) $(CFLAGS) $(ZINCOUT) -c -o $@ $(SRCDIR)test/minigzip.c
++
++example64.o: $(SRCDIR)test/example.c $(SRCDIR)zlib.h zconf.h
++	$(CC) $(CFLAGS) $(ZINCOUT) -D_FILE_OFFSET_BITS=64 -c -o $@ $(SRCDIR)test/example.c
++
++minigzip64.o: $(SRCDIR)test/minigzip.c $(SRCDIR)zlib.h zconf.h
++	$(CC) $(CFLAGS) $(ZINCOUT) -D_FILE_OFFSET_BITS=64 -c -o $@ $(SRCDIR)test/minigzip.c
++
++
++adler32.o: $(SRCDIR)adler32.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)adler32.c
++
++crc32.o: $(SRCDIR)crc32.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)crc32.c
++
++deflate.o: $(SRCDIR)deflate.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)deflate.c
++
++infback.o: $(SRCDIR)infback.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)infback.c
++
++inffast.o: $(SRCDIR)inffast.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)inffast.c
++
++inflate.o: $(SRCDIR)inflate.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)inflate.c
++
++inftrees.o: $(SRCDIR)inftrees.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)inftrees.c
++
++trees.o: $(SRCDIR)trees.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)trees.c
++
++zutil.o: $(SRCDIR)zutil.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)zutil.c
++
++compress.o: $(SRCDIR)compress.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)compress.c
++
++uncompr.o: $(SRCDIR)uncompr.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)uncompr.c
++
++gzclose.o: $(SRCDIR)gzclose.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)gzclose.c
++
++gzlib.o: $(SRCDIR)gzlib.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)gzlib.c
++
++gzread.o: $(SRCDIR)gzread.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)gzread.c
++
++gzwrite.o: $(SRCDIR)gzwrite.c
++	$(CC) $(CFLAGS) $(ZINC) -c -o $@ $(SRCDIR)gzwrite.c
++
++
++adler32.lo: $(SRCDIR)adler32.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/adler32.o $(SRCDIR)adler32.c
++	-@mv objs/adler32.o $@
++
++crc32.lo: $(SRCDIR)crc32.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/crc32.o $(SRCDIR)crc32.c
++	-@mv objs/crc32.o $@
++
++deflate.lo: $(SRCDIR)deflate.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/deflate.o $(SRCDIR)deflate.c
++	-@mv objs/deflate.o $@
++
++infback.lo: $(SRCDIR)infback.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/infback.o $(SRCDIR)infback.c
++	-@mv objs/infback.o $@
++
++inffast.lo: $(SRCDIR)inffast.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/inffast.o $(SRCDIR)inffast.c
++	-@mv objs/inffast.o $@
++
++inflate.lo: $(SRCDIR)inflate.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/inflate.o $(SRCDIR)inflate.c
++	-@mv objs/inflate.o $@
++
++inftrees.lo: $(SRCDIR)inftrees.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/inftrees.o $(SRCDIR)inftrees.c
++	-@mv objs/inftrees.o $@
++
++trees.lo: $(SRCDIR)trees.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/trees.o $(SRCDIR)trees.c
++	-@mv objs/trees.o $@
++
++zutil.lo: $(SRCDIR)zutil.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/zutil.o $(SRCDIR)zutil.c
++	-@mv objs/zutil.o $@
++
++compress.lo: $(SRCDIR)compress.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/compress.o $(SRCDIR)compress.c
++	-@mv objs/compress.o $@
++
++uncompr.lo: $(SRCDIR)uncompr.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/uncompr.o $(SRCDIR)uncompr.c
++	-@mv objs/uncompr.o $@
++
++gzclose.lo: $(SRCDIR)gzclose.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/gzclose.o $(SRCDIR)gzclose.c
++	-@mv objs/gzclose.o $@
++
++gzlib.lo: $(SRCDIR)gzlib.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/gzlib.o $(SRCDIR)gzlib.c
++	-@mv objs/gzlib.o $@
++
++gzread.lo: $(SRCDIR)gzread.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/gzread.o $(SRCDIR)gzread.c
++	-@mv objs/gzread.o $@
++
++gzwrite.lo: $(SRCDIR)gzwrite.c
++	-@mkdir objs 2>/dev/null || test -d objs
++	$(CC) $(SFLAGS) $(ZINC) -DPIC -c -o objs/gzwrite.o $(SRCDIR)gzwrite.c
++	-@mv objs/gzwrite.o $@
++
++
++placebo $(SHAREDLIBV): $(PIC_OBJS) libz.a
++	$(LDSHARED) $(SFLAGS) -o $@ $(PIC_OBJS) $(LDSHAREDLIBC) $(LDFLAGS)
++	rm -f $(SHAREDLIB) $(SHAREDLIBM)
++	ln -s $@ $(SHAREDLIB)
++	ln -s $@ $(SHAREDLIBM)
++	-@rmdir objs
++
++example$(EXE): example.o $(STATICLIB)
++	$(CC) $(CFLAGS) -o $@ example.o $(TEST_LDFLAGS)
++
++minigzip$(EXE): minigzip.o $(STATICLIB)
++	$(CC) $(CFLAGS) -o $@ minigzip.o $(TEST_LDFLAGS)
++
++examplesh$(EXE): example.o $(SHAREDLIBV)
++	$(CC) $(CFLAGS) -o $@ example.o -L. $(SHAREDLIBV)
++
++minigzipsh$(EXE): minigzip.o $(SHAREDLIBV)
++	$(CC) $(CFLAGS) -o $@ minigzip.o -L. $(SHAREDLIBV)
++
++example64$(EXE): example64.o $(STATICLIB)
++	$(CC) $(CFLAGS) -o $@ example64.o $(TEST_LDFLAGS)
++
++minigzip64$(EXE): minigzip64.o $(STATICLIB)
++	$(CC) $(CFLAGS) -o $@ minigzip64.o $(TEST_LDFLAGS)
++
++install-libs: $(LIBS)
++	-@if [ ! -d $(DESTDIR)$(exec_prefix)  ]; then mkdir -p $(DESTDIR)$(exec_prefix); fi
++	-@if [ ! -d $(DESTDIR)$(libdir)       ]; then mkdir -p $(DESTDIR)$(libdir); fi
++	-@if [ ! -d $(DESTDIR)$(sharedlibdir) ]; then mkdir -p $(DESTDIR)$(sharedlibdir); fi
++	-@if [ ! -d $(DESTDIR)$(man3dir)      ]; then mkdir -p $(DESTDIR)$(man3dir); fi
++	-@if [ ! -d $(DESTDIR)$(pkgconfigdir) ]; then mkdir -p $(DESTDIR)$(pkgconfigdir); fi
++	rm -f $(DESTDIR)$(libdir)/$(STATICLIB)
++	cp $(STATICLIB) $(DESTDIR)$(libdir)
++	chmod 644 $(DESTDIR)$(libdir)/$(STATICLIB)
++	-@($(RANLIB) $(DESTDIR)$(libdir)/libz.a || true) >/dev/null 2>&1
++	-@if test -n "$(SHAREDLIBV)"; then \
++	  rm -f $(DESTDIR)$(sharedlibdir)/$(SHAREDLIBV); \
++	  cp $(SHAREDLIBV) $(DESTDIR)$(sharedlibdir); \
++	  echo "cp $(SHAREDLIBV) $(DESTDIR)$(sharedlibdir)"; \
++	  chmod 755 $(DESTDIR)$(sharedlibdir)/$(SHAREDLIBV); \
++	  echo "chmod 755 $(DESTDIR)$(sharedlibdir)/$(SHAREDLIBV)"; \
++	  rm -f $(DESTDIR)$(sharedlibdir)/$(SHAREDLIB) $(DESTDIR)$(sharedlibdir)/$(SHAREDLIBM); \
++	  ln -s $(SHAREDLIBV) $(DESTDIR)$(sharedlibdir)/$(SHAREDLIB); \
++	  ln -s $(SHAREDLIBV) $(DESTDIR)$(sharedlibdir)/$(SHAREDLIBM); \
++	  ($(LDCONFIG) || true)  >/dev/null 2>&1; \
++	fi
++	rm -f $(DESTDIR)$(man3dir)/zlib.3
++	cp $(SRCDIR)zlib.3 $(DESTDIR)$(man3dir)
++	chmod 644 $(DESTDIR)$(man3dir)/zlib.3
++	rm -f $(DESTDIR)$(pkgconfigdir)/zlib.pc
++	cp zlib.pc $(DESTDIR)$(pkgconfigdir)
++	chmod 644 $(DESTDIR)$(pkgconfigdir)/zlib.pc
++# The ranlib in install is needed on NeXTSTEP which checks file times
++# ldconfig is for Linux
++
++install: install-libs
++	-@if [ ! -d $(DESTDIR)$(includedir)   ]; then mkdir -p $(DESTDIR)$(includedir); fi
++	rm -f $(DESTDIR)$(includedir)/zlib.h $(DESTDIR)$(includedir)/zconf.h
++	cp $(SRCDIR)zlib.h zconf.h $(DESTDIR)$(includedir)
++	chmod 644 $(DESTDIR)$(includedir)/zlib.h $(DESTDIR)$(includedir)/zconf.h
++
++uninstall:
++	cd $(DESTDIR)$(includedir) && rm -f zlib.h zconf.h
++	cd $(DESTDIR)$(libdir) && rm -f libz.a; \
++	if test -n "$(SHAREDLIBV)" -a -f $(SHAREDLIBV); then \
++	  rm -f $(SHAREDLIBV) $(SHAREDLIB) $(SHAREDLIBM); \
++	fi
++	cd $(DESTDIR)$(man3dir) && rm -f zlib.3
++	cd $(DESTDIR)$(pkgconfigdir) && rm -f zlib.pc
++
++docs: zlib.3.pdf
++
++zlib.3.pdf: $(SRCDIR)zlib.3
++	groff -mandoc -f H -T ps $(SRCDIR)zlib.3 | ps2pdf - $@
++
++zconf.h.cmakein: $(SRCDIR)zconf.h.in
++	-@ TEMPFILE=zconfh_$$; \
++	echo "/#define ZCONF_H/ a\\\\\n#cmakedefine Z_PREFIX\\\\\n#cmakedefine Z_HAVE_UNISTD_H\n" >> $$TEMPFILE &&\
++	sed -f $$TEMPFILE $(SRCDIR)zconf.h.in > $@ &&\
++	touch -r $(SRCDIR)zconf.h.in $@ &&\
++	rm $$TEMPFILE
++
++zconf: $(SRCDIR)zconf.h.in
++	cp -p $(SRCDIR)zconf.h.in zconf.h
++
++mostlyclean: clean
++clean:
++	rm -f *.o *.lo *~ \
++	   example$(EXE) minigzip$(EXE) examplesh$(EXE) minigzipsh$(EXE) \
++	   example64$(EXE) minigzip64$(EXE) \
++	   infcover \
++	   libz.* foo.gz so_locations \
++	   _match.s maketree contrib/infback9/*.o
++	rm -rf objs
++	rm -f *.gcda *.gcno *.gcov
++	rm -f contrib/infback9/*.gcda contrib/infback9/*.gcno contrib/infback9/*.gcov
++
++maintainer-clean: distclean
++distclean: clean zconf zconf.h.cmakein
++	rm -f Makefile zlib.pc configure.log
++	-@rm -f .DS_Store
++	@if [ -f Makefile.in ]; then \
++	printf 'all:\n\t-@echo "Please use ./configure first.  Thank you."\n' > Makefile ; \
++	printf '\ndistclean:\n\tmake -f Makefile.in distclean\n' >> Makefile ; \
++	touch -r $(SRCDIR)Makefile.in Makefile ; fi
++
++tags:
++	etags $(SRCDIR)*.[ch]
++
++adler32.o zutil.o: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h
++gzclose.o gzlib.o gzread.o gzwrite.o: $(SRCDIR)zlib.h zconf.h $(SRCDIR)gzguts.h
++compress.o example.o minigzip.o uncompr.o: $(SRCDIR)zlib.h zconf.h
++crc32.o: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)crc32.h
++deflate.o: $(SRCDIR)deflate.h $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h
++infback.o inflate.o: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)inftrees.h $(SRCDIR)inflate.h $(SRCDIR)inffast.h $(SRCDIR)inffixed.h
++inffast.o: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)inftrees.h $(SRCDIR)inflate.h $(SRCDIR)inffast.h
++inftrees.o: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)inftrees.h
++trees.o: $(SRCDIR)deflate.h $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)trees.h
++
++adler32.lo zutil.lo: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h
++gzclose.lo gzlib.lo gzread.lo gzwrite.lo: $(SRCDIR)zlib.h zconf.h $(SRCDIR)gzguts.h
++compress.lo example.lo minigzip.lo uncompr.lo: $(SRCDIR)zlib.h zconf.h
++crc32.lo: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)crc32.h
++deflate.lo: $(SRCDIR)deflate.h $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h
++infback.lo inflate.lo: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)inftrees.h $(SRCDIR)inflate.h $(SRCDIR)inffast.h $(SRCDIR)inffixed.h
++inffast.lo: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)inftrees.h $(SRCDIR)inflate.h $(SRCDIR)inffast.h
++inftrees.lo: $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)inftrees.h
++trees.lo: $(SRCDIR)deflate.h $(SRCDIR)zutil.h $(SRCDIR)zlib.h zconf.h $(SRCDIR)trees.h
+バイナリーファイル zlib-1.2.12_orig/adler32.lo とzlib-1.2.12/adler32.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/adler32.o とzlib-1.2.12/adler32.o は異なります
+バイナリーファイル zlib-1.2.12_orig/compress.lo とzlib-1.2.12/compress.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/compress.o とzlib-1.2.12/compress.o は異なります
+diff --color -uprN zlib-1.2.12_orig/configure.log zlib-1.2.12/configure.log
+--- zlib-1.2.12_orig/configure.log	1970-01-01 09:00:00.000000000 +0900
++++ zlib-1.2.12/configure.log	2022-04-06 23:10:53.961134734 +0900
+@@ -0,0 +1,163 @@
++--------------------
++./configure
++2022年  4月  6日 水曜日 23:10:53 JST
++Checking for gcc...
++=== ztest199506.c ===
++extern int getchar();
++int hello() {return getchar();}
++===
++gcc -c ztest199506.c
++... using gcc
++
++Checking for obsessive-compulsive compiler options...
++=== ztest199506.c ===
++int foo() { return 0; }
++===
++gcc -c -O3 ztest199506.c
++
++Checking for shared library support...
++=== ztest199506.c ===
++extern int getchar();
++int hello() {return getchar();}
++===
++gcc -w -c -O3 -fPIC ztest199506.c
++gcc -shared -Wl,-soname,libz.so.1,--version-script,zlib.map -O3 -fPIC -o ztest199506.so ztest199506.o
++Building shared library libz.so.1.2.12 with gcc.
++
++=== ztest199506.c ===
++#include <stdio.h>
++#include <stdlib.h>
++size_t dummy = 0;
++===
++gcc -c -O3 ztest199506.c
++Checking for size_t... Yes.
++
++=== ztest199506.c ===
++#include <sys/types.h>
++off64_t dummy = 0;
++===
++gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest199506.c
++Checking for off64_t... Yes.
++Checking for fseeko... Yes.
++
++=== ztest199506.c ===
++#include <string.h>
++#include <errno.h>
++int main() { return strlen(strerror(errno)); }
++===
++gcc -O3 -D_LARGEFILE64_SOURCE=1 -o ztest199506 ztest199506.c
++Checking for strerror... Yes.
++
++=== ztest199506.c ===
++#include <unistd.h>
++int main() { return 0; }
++===
++gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest199506.c
++Checking for unistd.h... Yes.
++
++=== ztest199506.c ===
++#include <stdarg.h>
++int main() { return 0; }
++===
++gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest199506.c
++Checking for stdarg.h... Yes.
++
++=== ztest199506.c ===
++#include <stdio.h>
++#include <stdarg.h>
++#include "zconf.h"
++int main()
++{
++#ifndef STDC
++  choke me
++#endif
++  return 0;
++}
++===
++gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest199506.c
++Checking whether to use vs[n]printf() or s[n]printf()... using vs[n]printf().
++
++=== ztest199506.c ===
++#include <stdio.h>
++#include <stdarg.h>
++int mytest(const char *fmt, ...)
++{
++  char buf[20];
++  va_list ap;
++  va_start(ap, fmt);
++  vsnprintf(buf, sizeof(buf), fmt, ap);
++  va_end(ap);
++  return 0;
++}
++int main()
++{
++  return (mytest("Hello%d\n", 1));
++}
++===
++gcc -O3 -D_LARGEFILE64_SOURCE=1 -o ztest199506 ztest199506.c
++Checking for vsnprintf() in stdio.h... Yes.
++
++=== ztest199506.c ===
++#include <stdio.h>
++#include <stdarg.h>
++int mytest(const char *fmt, ...)
++{
++  int n;
++  char buf[20];
++  va_list ap;
++  va_start(ap, fmt);
++  n = vsnprintf(buf, sizeof(buf), fmt, ap);
++  va_end(ap);
++  return n;
++}
++int main()
++{
++  return (mytest("Hello%d\n", 1));
++}
++===
++gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest199506.c
++Checking for return value of vsnprintf()... Yes.
++
++=== ztest199506.c ===
++#define ZLIB_INTERNAL __attribute__((visibility ("hidden")))
++int ZLIB_INTERNAL foo;
++int main()
++{
++  return 0;
++}
++===
++gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest199506.c
++Checking for attribute(visibility) support... Yes.
++
++ALL = static shared all64
++AR = ar
++ARFLAGS = rc
++CC = gcc
++CFLAGS = -O3 -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN
++CPP = gcc -E
++EXE =
++LDCONFIG = ldconfig
++LDFLAGS =
++LDSHARED = gcc -shared -Wl,-soname,libz.so.1,--version-script,zlib.map
++LDSHAREDLIBC = -lc
++OBJC = $(OBJZ) $(OBJG)
++PIC_OBJC = $(PIC_OBJZ) $(PIC_OBJG)
++RANLIB = ranlib
++SFLAGS = -O3 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN
++SHAREDLIB = libz.so
++SHAREDLIBM = libz.so.1
++SHAREDLIBV = libz.so.1.2.12
++STATICLIB = libz.a
++TEST = all teststatic testshared test64
++VER = 1.2.12
++SRCDIR =
++exec_prefix = ${prefix}
++includedir = ${prefix}/include
++libdir = ${exec_prefix}/lib
++mandir = ${prefix}/share/man
++prefix = /usr/local
++sharedlibdir = ${libdir}
++uname = Linux
++--------------------
++
++
+バイナリーファイル zlib-1.2.12_orig/crc32.lo とzlib-1.2.12/crc32.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/crc32.o とzlib-1.2.12/crc32.o は異なります
+バイナリーファイル zlib-1.2.12_orig/deflate.lo とzlib-1.2.12/deflate.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/deflate.o とzlib-1.2.12/deflate.o は異なります
+バイナリーファイル zlib-1.2.12_orig/example とzlib-1.2.12/example は異なります
+バイナリーファイル zlib-1.2.12_orig/example.o とzlib-1.2.12/example.o は異なります
+バイナリーファイル zlib-1.2.12_orig/example64 とzlib-1.2.12/example64 は異なります
+バイナリーファイル zlib-1.2.12_orig/example64.o とzlib-1.2.12/example64.o は異なります
+バイナリーファイル zlib-1.2.12_orig/examplesh とzlib-1.2.12/examplesh は異なります
+diff --color -uprN zlib-1.2.12_orig/gzclose.c zlib-1.2.12/gzclose.c
+--- zlib-1.2.12_orig/gzclose.c	2010-02-14 09:12:48.000000000 +0900
++++ zlib-1.2.12/gzclose.c	2022-04-10 21:11:22.407314003 +0900
+@@ -11,6 +11,8 @@
+ int ZEXPORT gzclose(file)
+     gzFile file;
+ {
++    fprintf(stderr, "%s: begin\n", __FUNCTION__);
++
+ #ifndef NO_GZCOMPRESS
+     gz_statep state;
+ 
+@@ -18,8 +20,13 @@ int ZEXPORT gzclose(file)
+         return Z_STREAM_ERROR;
+     state = (gz_statep)file;
+ 
+-    return state->mode == GZ_READ ? gzclose_r(file) : gzclose_w(file);
++
++    int retval = state->mode == GZ_READ ? gzclose_r(file) : gzclose_w(file);
++    fprintf(stderr, "%s: end\n", __FUNCTION__);
++    return retval;
+ #else
+-    return gzclose_r(file);
++    int retval =  gzclose_r(file);
++    fprintf(stderr, "%s: end\n", __FUNCTION__);
++    return retval;
+ #endif
+ }
+バイナリーファイル zlib-1.2.12_orig/gzclose.lo とzlib-1.2.12/gzclose.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/gzclose.o とzlib-1.2.12/gzclose.o は異なります
+バイナリーファイル zlib-1.2.12_orig/gzlib.lo とzlib-1.2.12/gzlib.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/gzlib.o とzlib-1.2.12/gzlib.o は異なります
+diff --color -uprN zlib-1.2.12_orig/gzread.c zlib-1.2.12/gzread.c
+--- zlib-1.2.12_orig/gzread.c	2022-03-28 08:39:42.000000000 +0900
++++ zlib-1.2.12/gzread.c	2022-04-10 21:14:09.724834906 +0900
+@@ -628,6 +628,7 @@ int ZEXPORT gzclose_r(file)
+     int ret, err;
+     gz_statep state;
+ 
++    fprintf(stderr, "%s: begin\n", __FUNCTION__);
+     /* get internal structure */
+     if (file == NULL)
+         return Z_STREAM_ERROR;
+@@ -648,5 +649,6 @@ int ZEXPORT gzclose_r(file)
+     free(state->path);
+     ret = close(state->fd);
+     free(state);
++    fprintf(stderr, "%s: end\n", __FUNCTION__);
+     return ret ? Z_ERRNO : err;
+ }
+バイナリーファイル zlib-1.2.12_orig/gzread.lo とzlib-1.2.12/gzread.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/gzread.o とzlib-1.2.12/gzread.o は異なります
+diff --color -uprN zlib-1.2.12_orig/gzwrite.c zlib-1.2.12/gzwrite.c
+--- zlib-1.2.12_orig/gzwrite.c	2022-03-28 08:39:42.000000000 +0900
++++ zlib-1.2.12/gzwrite.c	2022-04-11 00:20:57.332152328 +0900
+@@ -26,6 +26,7 @@ local int gz_init(state)
+         gz_error(state, Z_MEM_ERROR, "out of memory");
+         return -1;
+     }
++    fprintf(stderr, "state->in=%p, malloc(%u)\n", state->in, state->want << 1);
+ 
+     /* only need output buffer and deflate state if compressing */
+     if (!state->direct) {
+@@ -36,6 +37,7 @@ local int gz_init(state)
+             gz_error(state, Z_MEM_ERROR, "out of memory");
+             return -1;
+         }
++        fprintf(stderr, "state->out=%p, malloc(%u)\n", state->out, state->want);
+ 
+         /* allocate deflate memory, set up for gzip compression */
+         strm->zalloc = Z_NULL;
+@@ -49,11 +51,13 @@ local int gz_init(state)
+             gz_error(state, Z_MEM_ERROR, "out of memory");
+             return -1;
+         }
++        fprintf(stderr, "deflateInit2: state->strategy=%u\n", state->strategy);
+         strm->next_in = NULL;
+     }
+ 
+     /* mark state as initialized */
+     state->size = state->want;
++    fprintf(stderr, "state->size=%u\n", state->size);
+ 
+     /* initialize write buffer if compressing */
+     if (!state->direct) {
+@@ -78,12 +82,17 @@ local int gz_comp(state, flush)
+     unsigned have, put, max = ((unsigned)-1 >> 2) + 1;
+     z_streamp strm = &(state->strm);
+ 
++    fprintf(stderr, "%s: begin\n", __FUNCTION__);
++    fprintf(stderr, "max=0x%x(%u) (unsigned)-1=0x%x(%u)\n",
++        max, max, (unsigned)-1, (unsigned)-1);
++
+     /* allocate memory if this is the first time through */
+     if (state->size == 0 && gz_init(state) == -1)
+         return -1;
+ 
+     /* write directly if requested */
+     if (state->direct) {
++        fprintf(stderr, "state->direct\n");
+         while (strm->avail_in) {
+             put = strm->avail_in > max ? max : strm->avail_in;
+             writ = write(state->fd, strm->next_in, put);
+@@ -99,6 +108,7 @@ local int gz_comp(state, flush)
+ 
+     /* check for a pending reset */
+     if (state->reset) {
++        fprintf(stderr, "state->reset\n");
+         /* don't start a new gzip member unless there is data to write */
+         if (strm->avail_in == 0)
+             return 0;
+@@ -108,6 +118,8 @@ local int gz_comp(state, flush)
+ 
+     /* run deflate() on provided input until it produces no more output */
+     ret = Z_OK;
++    fprintf(stderr, "do-while: begin\n");
++    unsigned long count = 0;
+     do {
+         /* write out current buffer contents if full, or if flushing, but if
+            doing Z_FINISH then don't write until we get to Z_STREAM_END */
+@@ -117,6 +129,7 @@ local int gz_comp(state, flush)
+                 put = strm->next_out - state->x.next > (int)max ? max :
+                       (unsigned)(strm->next_out - state->x.next);
+                 writ = write(state->fd, state->x.next, put);
++                fprintf(stderr, "write(%p): writ=%d\n", state->x.next, writ);
+                 if (writ < 0) {
+                     gz_error(state, Z_ERRNO, zstrerror());
+                     return -1;
+@@ -130,6 +143,10 @@ local int gz_comp(state, flush)
+             }
+         }
+ 
++        unsigned long save_total_in = strm->total_in;
++        unsigned long save_total_out = strm->total_out;
++        fprintf(stderr, "before(%lu): avail_in=%u, avail_out=%u, total_in=%lu, total_out=%lu\n",
++            count, strm->avail_in, strm->avail_out, strm->total_in, strm->total_out);
+         /* compress */
+         have = strm->avail_out;
+         ret = deflate(strm, flush);
+@@ -139,7 +156,15 @@ local int gz_comp(state, flush)
+             return -1;
+         }
+         have -= strm->avail_out;
++        fprintf(stderr,
++            "after(%lu): avail_in=%u, avail_out=%u, total_in=%lu(+%lu), " \
++            "total_out=%lu(+%lu), have=%u\n",
++            count, strm->avail_in, strm->avail_out,
++            strm->total_in, (strm->total_in - save_total_in),
++            strm->total_out, (strm->total_out - save_total_out), have);
++        count += 1;
+     } while (have);
++    fprintf(stderr, "do-while: end\n");
+ 
+     /* if that completed a deflate stream, allow another to start */
+     if (flush == Z_FINISH)
+@@ -191,6 +216,8 @@ local z_size_t gz_write(state, buf, len)
+ {
+     z_size_t put = len;
+ 
++    fprintf(stderr, "%s: begin\n", __FUNCTION__);
++
+     /* if len is zero, avoid unnecessary operations */
+     if (len == 0)
+         return 0;
+@@ -247,6 +274,8 @@ local z_size_t gz_write(state, buf, len)
+         } while (len);
+     }
+ 
++    fprintf(stderr, "%s: end\n", __FUNCTION__);
++
+     /* input was all buffered or compressed */
+     return put;
+ }
+@@ -642,6 +671,8 @@ int ZEXPORT gzclose_w(file)
+     int ret = Z_OK;
+     gz_statep state;
+ 
++    fprintf(stderr, "%s: begin\n", __FUNCTION__);
++
+     /* get internal structure */
+     if (file == NULL)
+         return Z_STREAM_ERROR;
+@@ -673,5 +704,7 @@ int ZEXPORT gzclose_w(file)
+     if (close(state->fd) == -1)
+         ret = Z_ERRNO;
+     free(state);
++    fprintf(stderr, "%s: end\n", __FUNCTION__);
++
+     return ret;
+ }
+バイナリーファイル zlib-1.2.12_orig/gzwrite.lo とzlib-1.2.12/gzwrite.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/gzwrite.o とzlib-1.2.12/gzwrite.o は異なります
+バイナリーファイル zlib-1.2.12_orig/infback.lo とzlib-1.2.12/infback.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/infback.o とzlib-1.2.12/infback.o は異なります
+バイナリーファイル zlib-1.2.12_orig/inffast.lo とzlib-1.2.12/inffast.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/inffast.o とzlib-1.2.12/inffast.o は異なります
+バイナリーファイル zlib-1.2.12_orig/inflate.lo とzlib-1.2.12/inflate.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/inflate.o とzlib-1.2.12/inflate.o は異なります
+バイナリーファイル zlib-1.2.12_orig/inftrees.lo とzlib-1.2.12/inftrees.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/inftrees.o とzlib-1.2.12/inftrees.o は異なります
+バイナリーファイル zlib-1.2.12_orig/libz.a とzlib-1.2.12/libz.a は異なります
+バイナリーファイル zlib-1.2.12_orig/libz.so とzlib-1.2.12/libz.so は異なります
+バイナリーファイル zlib-1.2.12_orig/libz.so.1 とzlib-1.2.12/libz.so.1 は異なります
+バイナリーファイル zlib-1.2.12_orig/libz.so.1.2.12 とzlib-1.2.12/libz.so.1.2.12 は異なります
+バイナリーファイル zlib-1.2.12_orig/minigzip とzlib-1.2.12/minigzip は異なります
+バイナリーファイル zlib-1.2.12_orig/minigzip.o とzlib-1.2.12/minigzip.o は異なります
+バイナリーファイル zlib-1.2.12_orig/minigzip64 とzlib-1.2.12/minigzip64 は異なります
+バイナリーファイル zlib-1.2.12_orig/minigzip64.o とzlib-1.2.12/minigzip64.o は異なります
+バイナリーファイル zlib-1.2.12_orig/minigzipsh とzlib-1.2.12/minigzipsh は異なります
+diff --color -uprN zlib-1.2.12_orig/size zlib-1.2.12/size
+--- zlib-1.2.12_orig/size	1970-01-01 09:00:00.000000000 +0900
++++ zlib-1.2.12/size	2022-04-10 14:48:19.684532193 +0900
+@@ -0,0 +1,965 @@
++[35m[KChangeLog[m[K[36m[K:[m[K[32m[K505[m[K[36m[K:[m[K- Use z_off64_t in gz_zero() and gz_skip() to match [01;31m[Kstate-[m[K>skip
++[35m[KChangeLog[m[K[36m[K:[m[K[32m[K747[m[K[36m[K:[m[K- Initialize [01;31m[Kstate-[m[K>write in inflateReset() since copied in inflate_fast()
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K43[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>window = window;
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K262[m[K[36m[K:[m[K    window = [01;31m[Kstate-[m[K>window;
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K347[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>nlen = BITS(5) + 257;
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K349[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>ndist = BITS(5) + 1;
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K351[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>ncode = BITS(4) + 4;
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K353[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>nlen > 286) {
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K361[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>have = 0;
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K362[m[K[36m[K:[m[K            while ([01;31m[Kstate-[m[K>have < [01;31m[Kstate-[m[K>ncode) {
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K364[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>lens[order[[01;31m[Kstate-[m[K>have++]] = (unsigned short)BITS(3);
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K367[m[K[36m[K:[m[K            while ([01;31m[Kstate-[m[K>have < 19)
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K368[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>lens[order[[01;31m[Kstate-[m[K>have++]] = 0;
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K369[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>next = [01;31m[Kstate-[m[K>codes;
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K370[m[K[36m[K:[m[K            lencode = (code const FAR *)([01;31m[Kstate-[m[K>next);
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K372[m[K[36m[K:[m[K            ret = inflate_table9(CODES, [01;31m[Kstate-[m[K>lens, 19, &([01;31m[Kstate-[m[K>next),
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K373[m[K[36m[K:[m[K                                &(lenbits), [01;31m[Kstate-[m[K>work);
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K382[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>have = 0;
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K383[m[K[36m[K:[m[K            while ([01;31m[Kstate-[m[K>have < [01;31m[Kstate-[m[K>nlen + [01;31m[Kstate-[m[K>ndist) {
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K392[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>lens[[01;31m[Kstate-[m[K>have++] = here.val;
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K398[m[K[36m[K:[m[K                        if ([01;31m[Kstate-[m[K>have == 0) {
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K403[m[K[36m[K:[m[K                        len = (unsigned)([01;31m[Kstate-[m[K>lens[[01;31m[Kstate-[m[K>have - 1]);
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K421[m[K[36m[K:[m[K                    if ([01;31m[Kstate-[m[K>have + copy > [01;31m[Kstate-[m[K>nlen + [01;31m[Kstate-[m[K>ndist) {
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K427[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>lens[[01;31m[Kstate-[m[K>have++] = (unsigned short)len;
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K435[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>lens[256] == 0) {
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K444[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>next = [01;31m[Kstate-[m[K>codes;
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K445[m[K[36m[K:[m[K            lencode = (code const FAR *)([01;31m[Kstate-[m[K>next);
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K447[m[K[36m[K:[m[K            ret = inflate_table9(LENS, [01;31m[Kstate-[m[K>lens, [01;31m[Kstate-[m[K>nlen,
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K448[m[K[36m[K:[m[K                            &([01;31m[Kstate-[m[K>next), &(lenbits), [01;31m[Kstate-[m[K>work);
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K454[m[K[36m[K:[m[K            distcode = (code const FAR *)([01;31m[Kstate-[m[K>next);
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K456[m[K[36m[K:[m[K            ret = inflate_table9(DISTS, [01;31m[Kstate-[m[K>lens + [01;31m[Kstate-[m[K>nlen,
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K457[m[K[36m[K:[m[K                            [01;31m[Kstate-[m[K>ndist, &([01;31m[Kstate-[m[K>next), &(distbits),
++[35m[Kcontrib/infback9/infback9.c[m[K[36m[K:[m[K[32m[K458[m[K[36m[K:[m[K                            [01;31m[Kstate-[m[K>work);
++[35m[Kcrc32.c[m[K[36m[K:[m[K[32m[K194[m[K[36m[K:[m[K    if (!atomic_load(&[01;31m[Kstate-[m[K>done)) {
++[35m[Kcrc32.c[m[K[36m[K:[m[K[32m[K195[m[K[36m[K:[m[K        if (atomic_flag_test_and_set(&[01;31m[Kstate-[m[K>begun))
++[35m[Kcrc32.c[m[K[36m[K:[m[K[32m[K196[m[K[36m[K:[m[K            while (!atomic_load(&[01;31m[Kstate-[m[K>done))
++[35m[Kcrc32.c[m[K[36m[K:[m[K[32m[K200[m[K[36m[K:[m[K            atomic_store(&[01;31m[Kstate-[m[K>done, 1);
++[35m[Kcrc32.c[m[K[36m[K:[m[K[32m[K232[m[K[36m[K:[m[K    if (![01;31m[Kstate-[m[K>done) {
++[35m[Kcrc32.c[m[K[36m[K:[m[K[32m[K233[m[K[36m[K:[m[K        if (test_and_set(&[01;31m[Kstate-[m[K>begun))
++[35m[Kcrc32.c[m[K[36m[K:[m[K[32m[K234[m[K[36m[K:[m[K            while (![01;31m[Kstate-[m[K>done)
++[35m[Kcrc32.c[m[K[36m[K:[m[K[32m[K238[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>done = 1;
++[35m[Kdeflate.c[m[K[36m[K:[m[K[32m[K561[m[K[36m[K:[m[K    if (deflateStateCheck(strm) || strm->[01;31m[Kstate-[m[K>wrap != 2)
++[35m[Kdeflate.c[m[K[36m[K:[m[K[32m[K563[m[K[36m[K:[m[K    strm->[01;31m[Kstate-[m[K>gzhead = head;
++[35m[Kdeflate.c[m[K[36m[K:[m[K[32m[K575[m[K[36m[K:[m[K        *pending = strm->[01;31m[Kstate-[m[K>pending;
++[35m[Kdeflate.c[m[K[36m[K:[m[K[32m[K577[m[K[36m[K:[m[K        *bits = strm->[01;31m[Kstate-[m[K>bi_valid;
++[35m[Kdeflate.c[m[K[36m[K:[m[K[32m[K1126[m[K[36m[K:[m[K    status = strm->[01;31m[Kstate-[m[K>status;
++[35m[Kdeflate.c[m[K[36m[K:[m[K[32m[K1129[m[K[36m[K:[m[K    TRY_FREE(strm, strm->[01;31m[Kstate-[m[K>pending_buf);
++[35m[Kdeflate.c[m[K[36m[K:[m[K[32m[K1130[m[K[36m[K:[m[K    TRY_FREE(strm, strm->[01;31m[Kstate-[m[K>head);
++[35m[Kdeflate.c[m[K[36m[K:[m[K[32m[K1131[m[K[36m[K:[m[K    TRY_FREE(strm, strm->[01;31m[Kstate-[m[K>prev);
++[35m[Kdeflate.c[m[K[36m[K:[m[K[32m[K1132[m[K[36m[K:[m[K    TRY_FREE(strm, strm->[01;31m[Kstate-[m[K>window);
++[35m[Kdeflate.c[m[K[36m[K:[m[K[32m[K1217[m[K[36m[K:[m[K    if (strm->[01;31m[Kstate-[m[K>wrap == 1) {
++[35m[Kdeflate.c[m[K[36m[K:[m[K[32m[K1221[m[K[36m[K:[m[K    else if (strm->[01;31m[Kstate-[m[K>wrap == 2) {
++[35m[Kgzclose.c[m[K[36m[K:[m[K[32m[K21[m[K[36m[K:[m[K    return [01;31m[Kstate-[m[K>mode == GZ_READ ? gzclose_r(file) : gzclose_w(file);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K78[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>x.have = 0;              /* no output data available */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K79[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode == GZ_READ) {   /* for reading ... */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K80[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>eof = 0;             /* not at end of file */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K81[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>past = 0;            /* have not read past end yet */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K82[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>how = LOOK;          /* look for gzip header */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K85[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>reset = 0;           /* no deflateReset pending */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K86[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>seek = 0;                /* no seek request pending */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K88[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>x.pos = 0;               /* no uncompressed data yet */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K89[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>strm.avail_in = 0;       /* no input data yet */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K116[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>size = 0;            /* no buffers allocated yet */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K117[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>want = GZBUFSIZE;    /* requested buffer size */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K118[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>msg = NULL;          /* no error message yet */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K121[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>mode = GZ_NONE;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K122[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>level = Z_DEFAULT_COMPRESSION;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K123[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>strategy = Z_DEFAULT_STRATEGY;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K124[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>direct = 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K127[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>level = *mode - '0';
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K131[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = GZ_READ;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K135[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = GZ_WRITE;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K138[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = GZ_APPEND;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K157[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>strategy = Z_FILTERED;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K160[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>strategy = Z_HUFFMAN_ONLY;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K163[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>strategy = Z_RLE;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K166[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>strategy = Z_FIXED;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K169[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>direct = 1;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K178[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode == GZ_NONE) {
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K184[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode == GZ_READ) {
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K185[m[K[36m[K:[m[K        if ([01;31m[Kstate-[m[K>direct) {
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K189[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>direct = 1;      /* for empty file */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K202[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>path = (char *)malloc(len + 1);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K203[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>path == NULL) {
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K210[m[K[36m[K:[m[K            wcstombs([01;31m[Kstate-[m[K>path, path, len + 1);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K212[m[K[36m[K:[m[K            *([01;31m[Kstate-[m[K>path) = 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K216[m[K[36m[K:[m[K        (void)snprintf([01;31m[Kstate-[m[K>path, len + 1, "%s", (const char *)path);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K218[m[K[36m[K:[m[K        strcpy([01;31m[Kstate-[m[K>path, path);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K232[m[K[36m[K:[m[K        ([01;31m[Kstate-[m[K>mode == GZ_READ ?
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K238[m[K[36m[K:[m[K          ([01;31m[Kstate-[m[K>mode == GZ_WRITE ?
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K243[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>fd = fd > -1 ? fd : (
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K248[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>fd == -1) {
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K249[m[K[36m[K:[m[K        free([01;31m[Kstate-[m[K>path);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K253[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode == GZ_APPEND) {
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K254[m[K[36m[K:[m[K        LSEEK([01;31m[Kstate-[m[K>fd, 0, SEEK_END);  /* so gzoffset() is correct */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K255[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>mode = GZ_WRITE;         /* simplify later checks */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K259[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode == GZ_READ) {
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K260[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>start = LSEEK([01;31m[Kstate-[m[K>fd, 0, SEEK_CUR);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K261[m[K[36m[K:[m[K        if ([01;31m[Kstate-[m[K>start == -1) [01;31m[Kstate-[m[K>start = 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K328[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ && [01;31m[Kstate-[m[K>mode != GZ_WRITE)
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K332[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>size != 0)
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K340[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>want = size;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K356[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ ||
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K357[m[K[36m[K:[m[K            ([01;31m[Kstate-[m[K>err != Z_OK && [01;31m[Kstate-[m[K>err != Z_BUF_ERROR))
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K361[m[K[36m[K:[m[K    if (LSEEK([01;31m[Kstate-[m[K>fd, [01;31m[Kstate-[m[K>start, SEEK_SET) == -1)
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K381[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ && [01;31m[Kstate-[m[K>mode != GZ_WRITE)
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K385[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>err != Z_OK && [01;31m[Kstate-[m[K>err != Z_BUF_ERROR)
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K394[m[K[36m[K:[m[K        offset -= [01;31m[Kstate-[m[K>x.pos;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K395[m[K[36m[K:[m[K    else if ([01;31m[Kstate-[m[K>seek)
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K396[m[K[36m[K:[m[K        offset += [01;31m[Kstate-[m[K>skip;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K397[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>seek = 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K400[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode == GZ_READ && [01;31m[Kstate-[m[K>how == COPY &&
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K401[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>x.pos + offset >= 0) {
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K402[m[K[36m[K:[m[K        ret = LSEEK([01;31m[Kstate-[m[K>fd, offset - (z_off64_t)[01;31m[Kstate-[m[K>x.have, SEEK_CUR);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K405[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.have = 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K406[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>eof = 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K407[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>past = 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K408[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>seek = 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K410[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>strm.avail_in = 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K411[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.pos += offset;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K412[m[K[36m[K:[m[K        return [01;31m[Kstate-[m[K>x.pos;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K417[m[K[36m[K:[m[K        if ([01;31m[Kstate-[m[K>mode != GZ_READ)         /* writing -- can't go backwards */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K419[m[K[36m[K:[m[K        offset += [01;31m[Kstate-[m[K>x.pos;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K427[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode == GZ_READ) {
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K428[m[K[36m[K:[m[K        n = GT_OFF([01;31m[Kstate-[m[K>x.have) || (z_off64_t)[01;31m[Kstate-[m[K>x.have > offset ?
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K429[m[K[36m[K:[m[K            (unsigned)offset : [01;31m[Kstate-[m[K>x.have;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K430[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.have -= n;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K431[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.next += n;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K432[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.pos += n;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K438[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>seek = 1;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K439[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>skip = offset;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K441[m[K[36m[K:[m[K    return [01;31m[Kstate-[m[K>x.pos + offset;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K466[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ && [01;31m[Kstate-[m[K>mode != GZ_WRITE)
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K470[m[K[36m[K:[m[K    return [01;31m[Kstate-[m[K>x.pos + ([01;31m[Kstate-[m[K>seek ? [01;31m[Kstate-[m[K>skip : 0);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K494[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ && [01;31m[Kstate-[m[K>mode != GZ_WRITE)
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K498[m[K[36m[K:[m[K    offset = LSEEK([01;31m[Kstate-[m[K>fd, 0, SEEK_CUR);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K501[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode == GZ_READ)             /* reading */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K502[m[K[36m[K:[m[K        offset -= [01;31m[Kstate-[m[K>strm.avail_in;     /* don't count buffered input */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K526[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ && [01;31m[Kstate-[m[K>mode != GZ_WRITE)
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K530[m[K[36m[K:[m[K    return [01;31m[Kstate-[m[K>mode == GZ_READ ? [01;31m[Kstate-[m[K>past : 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K544[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ && [01;31m[Kstate-[m[K>mode != GZ_WRITE)
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K549[m[K[36m[K:[m[K        *errnum = [01;31m[Kstate-[m[K>err;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K550[m[K[36m[K:[m[K    return [01;31m[Kstate-[m[K>err == Z_MEM_ERROR ? "out of memory" :
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K551[m[K[36m[K:[m[K                                       ([01;31m[Kstate-[m[K>msg == NULL ? "" : [01;31m[Kstate-[m[K>msg);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K564[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ && [01;31m[Kstate-[m[K>mode != GZ_WRITE)
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K568[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode == GZ_READ) {
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K569[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>eof = 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K570[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>past = 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K575[m[K[36m[K:[m[K/* Create an error message in allocated memory and set [01;31m[Kstate-[m[K>err and
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K576[m[K[36m[K:[m[K   [01;31m[Kstate-[m[K>msg accordingly.  Free any previous error message already there.  Do
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K587[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>msg != NULL) {
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K588[m[K[36m[K:[m[K        if ([01;31m[Kstate-[m[K>err != Z_MEM_ERROR)
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K589[m[K[36m[K:[m[K            free([01;31m[Kstate-[m[K>msg);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K590[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>msg = NULL;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K593[m[K[36m[K:[m[K    /* if fatal, set [01;31m[Kstate-[m[K>x.have to 0 so that the gzgetc() macro fails */
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K595[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.have = 0;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K598[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>err = err;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K607[m[K[36m[K:[m[K    if (([01;31m[Kstate-[m[K>msg = (char *)malloc(strlen([01;31m[Kstate-[m[K>path) + strlen(msg) + 3)) ==
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K609[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>err = Z_MEM_ERROR;
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K613[m[K[36m[K:[m[K    (void)snprintf([01;31m[Kstate-[m[K>msg, strlen([01;31m[Kstate-[m[K>path) + strlen(msg) + 3,
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K614[m[K[36m[K:[m[K                   "%s%s%s", [01;31m[Kstate-[m[K>path, ": ", msg);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K616[m[K[36m[K:[m[K    strcpy([01;31m[Kstate-[m[K>msg, [01;31m[Kstate-[m[K>path);
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K617[m[K[36m[K:[m[K    strcat([01;31m[Kstate-[m[K>msg, ": ");
++[35m[Kgzlib.c[m[K[36m[K:[m[K[32m[K618[m[K[36m[K:[m[K    strcat([01;31m[Kstate-[m[K>msg, msg);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K18[m[K[36m[K:[m[K   [01;31m[Kstate-[m[K>fd, and update [01;31m[Kstate-[m[K>eof, [01;31m[Kstate-[m[K>err, and [01;31m[Kstate-[m[K>msg as appropriate.
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K35[m[K[36m[K:[m[K        ret = read([01;31m[Kstate-[m[K>fd, buf + *have, get);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K45[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>eof = 1;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K60[m[K[36m[K:[m[K    z_streamp strm = &([01;31m[Kstate-[m[K>strm);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K62[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>err != Z_OK && [01;31m[Kstate-[m[K>err != Z_BUF_ERROR)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K64[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>eof == 0) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K66[m[K[36m[K:[m[K            unsigned char *p = [01;31m[Kstate-[m[K>in;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K73[m[K[36m[K:[m[K        if (gz_load(state, [01;31m[Kstate-[m[K>in + strm->avail_in,
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K74[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>size - strm->avail_in, &got) == -1)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K77[m[K[36m[K:[m[K        strm->next_in = [01;31m[Kstate-[m[K>in;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K82[m[K[36m[K:[m[K/* Look for gzip header, set up for inflate or copy.  [01;31m[Kstate-[m[K>x.have must be 0.
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K83[m[K[36m[K:[m[K   If this is the first time in, allocate required memory.  [01;31m[Kstate-[m[K>how will be
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K94[m[K[36m[K:[m[K    z_streamp strm = &([01;31m[Kstate-[m[K>strm);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K97[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>size == 0) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K99[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>in = (unsigned char *)malloc([01;31m[Kstate-[m[K>want);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K100[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>out = (unsigned char *)malloc([01;31m[Kstate-[m[K>want << 1);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K101[m[K[36m[K:[m[K        if ([01;31m[Kstate-[m[K>in == NULL || [01;31m[Kstate-[m[K>out == NULL) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K102[m[K[36m[K:[m[K            free([01;31m[Kstate-[m[K>out);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K103[m[K[36m[K:[m[K            free([01;31m[Kstate-[m[K>in);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K107[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>size = [01;31m[Kstate-[m[K>want;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K110[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>strm.zalloc = Z_NULL;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K111[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>strm.zfree = Z_NULL;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K112[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>strm.opaque = Z_NULL;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K113[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>strm.avail_in = 0;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K114[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>strm.next_in = Z_NULL;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K115[m[K[36m[K:[m[K        if (inflateInit2(&([01;31m[Kstate-[m[K>strm), 15 + 16) != Z_OK) {    /* gunzip */
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K116[m[K[36m[K:[m[K            free([01;31m[Kstate-[m[K>out);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K117[m[K[36m[K:[m[K            free([01;31m[Kstate-[m[K>in);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K118[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>size = 0;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K142[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>how = GZIP;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K143[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>direct = 0;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K149[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>direct == 0) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K151[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>eof = 1;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K152[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.have = 0;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K159[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>x.next = [01;31m[Kstate-[m[K>out;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K161[m[K[36m[K:[m[K        memcpy([01;31m[Kstate-[m[K>x.next, strm->next_in, strm->avail_in);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K162[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.have = strm->avail_in;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K165[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>how = COPY;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K166[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>direct = 1;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K171[m[K[36m[K:[m[K   On return, [01;31m[Kstate-[m[K>x.have and [01;31m[Kstate-[m[K>x.next point to the just decompressed
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K172[m[K[36m[K:[m[K   data.  If the gzip stream completes, [01;31m[Kstate-[m[K>how is reset to LOOK to look for
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K173[m[K[36m[K:[m[K   the next gzip stream or raw data, once [01;31m[Kstate-[m[K>x.have is depleted.  Returns 0
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K180[m[K[36m[K:[m[K    z_streamp strm = &([01;31m[Kstate-[m[K>strm);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K212[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>x.have = had - strm->avail_out;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K213[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>x.next = strm->next_out - [01;31m[Kstate-[m[K>x.have;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K217[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>how = LOOK;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K223[m[K[36m[K:[m[K/* Fetch data and put it in the output buffer.  Assumes [01;31m[Kstate-[m[K>x.have is 0.
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K225[m[K[36m[K:[m[K   file depending on [01;31m[Kstate-[m[K>how.  If [01;31m[Kstate-[m[K>how is LOOK, then a gzip header is
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K227[m[K[36m[K:[m[K   otherwise 0.  gz_fetch() will leave [01;31m[Kstate-[m[K>how as COPY or GZIP unless the
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K232[m[K[36m[K:[m[K    z_streamp strm = &([01;31m[Kstate-[m[K>strm);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K235[m[K[36m[K:[m[K        switch([01;31m[Kstate-[m[K>how) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K239[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>how == LOOK)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K243[m[K[36m[K:[m[K            if (gz_load(state, [01;31m[Kstate-[m[K>out, [01;31m[Kstate-[m[K>size << 1, &([01;31m[Kstate-[m[K>x.have))
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K246[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>x.next = [01;31m[Kstate-[m[K>out;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K249[m[K[36m[K:[m[K            strm->avail_out = [01;31m[Kstate-[m[K>size << 1;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K250[m[K[36m[K:[m[K            strm->next_out = [01;31m[Kstate-[m[K>out;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K254[m[K[36m[K:[m[K    } while ([01;31m[Kstate-[m[K>x.have == 0 && (![01;31m[Kstate-[m[K>eof || strm->avail_in));
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K268[m[K[36m[K:[m[K        if ([01;31m[Kstate-[m[K>x.have) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K269[m[K[36m[K:[m[K            n = GT_OFF([01;31m[Kstate-[m[K>x.have) || (z_off64_t)[01;31m[Kstate-[m[K>x.have > len ?
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K270[m[K[36m[K:[m[K                (unsigned)len : [01;31m[Kstate-[m[K>x.have;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K271[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>x.have -= n;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K272[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>x.next += n;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K273[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>x.pos += n;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K278[m[K[36m[K:[m[K        else if ([01;31m[Kstate-[m[K>eof && [01;31m[Kstate-[m[K>strm.avail_in == 0)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K292[m[K[36m[K:[m[K   end of file was reached, or there was an error.  [01;31m[Kstate-[m[K>err must be
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K307[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>seek) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K308[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>seek = 0;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K309[m[K[36m[K:[m[K        if (gz_skip(state, [01;31m[Kstate-[m[K>skip) == -1)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K322[m[K[36m[K:[m[K        if ([01;31m[Kstate-[m[K>x.have) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K323[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>x.have < n)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K324[m[K[36m[K:[m[K                n = [01;31m[Kstate-[m[K>x.have;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K325[m[K[36m[K:[m[K            memcpy(buf, [01;31m[Kstate-[m[K>x.next, n);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K326[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>x.next += n;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K327[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>x.have -= n;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K331[m[K[36m[K:[m[K        else if ([01;31m[Kstate-[m[K>eof && [01;31m[Kstate-[m[K>strm.avail_in == 0) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K332[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>past = 1;        /* tried to read past end */
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K338[m[K[36m[K:[m[K        else if ([01;31m[Kstate-[m[K>how == LOOK || n < ([01;31m[Kstate-[m[K>size << 1)) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K348[m[K[36m[K:[m[K        else if ([01;31m[Kstate-[m[K>how == COPY) {      /* read directly */
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K354[m[K[36m[K:[m[K        else {  /* [01;31m[Kstate-[m[K>how == GZIP */
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K355[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>strm.avail_out = n;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K356[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>strm.next_out = (unsigned char *)buf;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K359[m[K[36m[K:[m[K            n = [01;31m[Kstate-[m[K>x.have;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K360[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>x.have = 0;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K367[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.pos += n;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K388[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ ||
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K389[m[K[36m[K:[m[K            ([01;31m[Kstate-[m[K>err != Z_OK && [01;31m[Kstate-[m[K>err != Z_BUF_ERROR))
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K403[m[K[36m[K:[m[K    if (len == 0 && [01;31m[Kstate-[m[K>err != Z_OK && [01;31m[Kstate-[m[K>err != Z_BUF_ERROR)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K426[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ ||
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K427[m[K[36m[K:[m[K            ([01;31m[Kstate-[m[K>err != Z_OK && [01;31m[Kstate-[m[K>err != Z_BUF_ERROR))
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K459[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ ||
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K460[m[K[36m[K:[m[K        ([01;31m[Kstate-[m[K>err != Z_OK && [01;31m[Kstate-[m[K>err != Z_BUF_ERROR))
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K464[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>x.have) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K465[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.have--;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K466[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.pos++;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K467[m[K[36m[K:[m[K        return *([01;31m[Kstate-[m[K>x.next)++;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K493[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ ||
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K494[m[K[36m[K:[m[K        ([01;31m[Kstate-[m[K>err != Z_OK && [01;31m[Kstate-[m[K>err != Z_BUF_ERROR))
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K498[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>seek) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K499[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>seek = 0;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K500[m[K[36m[K:[m[K        if (gz_skip(state, [01;31m[Kstate-[m[K>skip) == -1)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K509[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>x.have == 0) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K510[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.have = 1;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K511[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.next = [01;31m[Kstate-[m[K>out + ([01;31m[Kstate-[m[K>size << 1) - 1;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K512[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.next[0] = (unsigned char)c;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K513[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.pos--;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K514[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>past = 0;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K519[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>x.have == ([01;31m[Kstate-[m[K>size << 1)) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K525[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>x.next == [01;31m[Kstate-[m[K>out) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K526[m[K[36m[K:[m[K        unsigned char *src = [01;31m[Kstate-[m[K>out + [01;31m[Kstate-[m[K>x.have;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K527[m[K[36m[K:[m[K        unsigned char *dest = [01;31m[Kstate-[m[K>out + ([01;31m[Kstate-[m[K>size << 1);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K528[m[K[36m[K:[m[K        while (src > [01;31m[Kstate-[m[K>out)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K530[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.next = dest;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K532[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>x.have++;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K533[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>x.next--;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K534[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>x.next[0] = (unsigned char)c;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K535[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>x.pos--;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K536[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>past = 0;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K557[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ ||
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K558[m[K[36m[K:[m[K        ([01;31m[Kstate-[m[K>err != Z_OK && [01;31m[Kstate-[m[K>err != Z_BUF_ERROR))
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K562[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>seek) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K563[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>seek = 0;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K564[m[K[36m[K:[m[K        if (gz_skip(state, [01;31m[Kstate-[m[K>skip) == -1)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K575[m[K[36m[K:[m[K        if ([01;31m[Kstate-[m[K>x.have == 0 && gz_fetch(state) == -1)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K577[m[K[36m[K:[m[K        if ([01;31m[Kstate-[m[K>x.have == 0) {       /* end of file */
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K578[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>past = 1;            /* read past end */
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K583[m[K[36m[K:[m[K        n = [01;31m[Kstate-[m[K>x.have > left ? left : [01;31m[Kstate-[m[K>x.have;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K584[m[K[36m[K:[m[K        eol = (unsigned char *)memchr([01;31m[Kstate-[m[K>x.next, '\n', n);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K586[m[K[36m[K:[m[K            n = (unsigned)(eol - [01;31m[Kstate-[m[K>x.next) + 1;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K589[m[K[36m[K:[m[K        memcpy(buf, [01;31m[Kstate-[m[K>x.next, n);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K590[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.have -= n;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K591[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.next += n;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K592[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.pos += n;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K617[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode == GZ_READ && [01;31m[Kstate-[m[K>how == LOOK && [01;31m[Kstate-[m[K>x.have == 0)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K621[m[K[36m[K:[m[K    return [01;31m[Kstate-[m[K>direct;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K637[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_READ)
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K641[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>size) {
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K642[m[K[36m[K:[m[K        inflateEnd(&([01;31m[Kstate-[m[K>strm));
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K643[m[K[36m[K:[m[K        free([01;31m[Kstate-[m[K>out);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K644[m[K[36m[K:[m[K        free([01;31m[Kstate-[m[K>in);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K646[m[K[36m[K:[m[K    err = [01;31m[Kstate-[m[K>err == Z_BUF_ERROR ? Z_BUF_ERROR : Z_OK;
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K648[m[K[36m[K:[m[K    free([01;31m[Kstate-[m[K>path);
++[35m[Kgzread.c[m[K[36m[K:[m[K[32m[K649[m[K[36m[K:[m[K    ret = close([01;31m[Kstate-[m[K>fd);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K15[m[K[36m[K:[m[K   [01;31m[Kstate-[m[K>size to non-zero.  Return -1 on a memory allocation failure, or 0 on
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K21[m[K[36m[K:[m[K    z_streamp strm = &([01;31m[Kstate-[m[K>strm);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K24[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>in = (unsigned char *)malloc([01;31m[Kstate-[m[K>want << 1);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K25[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>in == NULL) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K31[m[K[36m[K:[m[K    if (![01;31m[Kstate-[m[K>direct) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K33[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>out = (unsigned char *)malloc([01;31m[Kstate-[m[K>want);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K34[m[K[36m[K:[m[K        if ([01;31m[Kstate-[m[K>out == NULL) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K35[m[K[36m[K:[m[K            free([01;31m[Kstate-[m[K>in);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K44[m[K[36m[K:[m[K        ret = deflateInit2(strm, [01;31m[Kstate-[m[K>level, Z_DEFLATED,
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K45[m[K[36m[K:[m[K                           MAX_WBITS + 16, DEF_MEM_LEVEL, [01;31m[Kstate-[m[K>strategy);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K47[m[K[36m[K:[m[K            free([01;31m[Kstate-[m[K>out);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K48[m[K[36m[K:[m[K            free([01;31m[Kstate-[m[K>in);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K56[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>size = [01;31m[Kstate-[m[K>want;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K59[m[K[36m[K:[m[K    if (![01;31m[Kstate-[m[K>direct) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K60[m[K[36m[K:[m[K        strm->avail_out = [01;31m[Kstate-[m[K>size;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K61[m[K[36m[K:[m[K        strm->next_out = [01;31m[Kstate-[m[K>out;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K62[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.next = strm->next_out;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K79[m[K[36m[K:[m[K    z_streamp strm = &([01;31m[Kstate-[m[K>strm);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K82[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>size == 0 && gz_init(state) == -1)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K86[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>direct) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K89[m[K[36m[K:[m[K            writ = write([01;31m[Kstate-[m[K>fd, strm->next_in, put);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K101[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>reset) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K106[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>reset = 0;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K116[m[K[36m[K:[m[K            while (strm->next_out > [01;31m[Kstate-[m[K>x.next) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K117[m[K[36m[K:[m[K                put = strm->next_out - [01;31m[Kstate-[m[K>x.next > (int)max ? max :
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K118[m[K[36m[K:[m[K                      (unsigned)(strm->next_out - [01;31m[Kstate-[m[K>x.next);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K119[m[K[36m[K:[m[K                writ = write([01;31m[Kstate-[m[K>fd, [01;31m[Kstate-[m[K>x.next, put);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K124[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>x.next += writ;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K127[m[K[36m[K:[m[K                strm->avail_out = [01;31m[Kstate-[m[K>size;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K128[m[K[36m[K:[m[K                strm->next_out = [01;31m[Kstate-[m[K>out;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K129[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>x.next = [01;31m[Kstate-[m[K>out;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K146[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>reset = 1;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K160[m[K[36m[K:[m[K    z_streamp strm = &([01;31m[Kstate-[m[K>strm);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K169[m[K[36m[K:[m[K        n = GT_OFF([01;31m[Kstate-[m[K>size) || (z_off64_t)[01;31m[Kstate-[m[K>size > len ?
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K170[m[K[36m[K:[m[K            (unsigned)len : [01;31m[Kstate-[m[K>size;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K172[m[K[36m[K:[m[K            memset([01;31m[Kstate-[m[K>in, 0, n);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K176[m[K[36m[K:[m[K        strm->next_in = [01;31m[Kstate-[m[K>in;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K177[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>x.pos += n;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K199[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>size == 0 && gz_init(state) == -1)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K203[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>seek) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K204[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>seek = 0;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K205[m[K[36m[K:[m[K        if (gz_zero(state, [01;31m[Kstate-[m[K>skip) == -1)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K210[m[K[36m[K:[m[K    if (len < [01;31m[Kstate-[m[K>size) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K215[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>strm.avail_in == 0)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K216[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>strm.next_in = [01;31m[Kstate-[m[K>in;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K217[m[K[36m[K:[m[K            have = (unsigned)(([01;31m[Kstate-[m[K>strm.next_in + [01;31m[Kstate-[m[K>strm.avail_in) -
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K218[m[K[36m[K:[m[K                              [01;31m[Kstate-[m[K>in);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K219[m[K[36m[K:[m[K            copy = [01;31m[Kstate-[m[K>size - have;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K222[m[K[36m[K:[m[K            memcpy([01;31m[Kstate-[m[K>in + have, buf, copy);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K223[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>strm.avail_in += copy;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K224[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>x.pos += copy;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K233[m[K[36m[K:[m[K        if ([01;31m[Kstate-[m[K>strm.avail_in && gz_comp(state, Z_NO_FLUSH) == -1)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K237[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>strm.next_in = (z_const Bytef *)buf;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K242[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>strm.avail_in = n;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K243[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>x.pos += n;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K268[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_WRITE || [01;31m[Kstate-[m[K>err != Z_OK)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K298[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_WRITE || [01;31m[Kstate-[m[K>err != Z_OK)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K326[m[K[36m[K:[m[K    strm = &([01;31m[Kstate-[m[K>strm);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K329[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_WRITE || [01;31m[Kstate-[m[K>err != Z_OK)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K333[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>seek) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K334[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>seek = 0;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K335[m[K[36m[K:[m[K        if (gz_zero(state, [01;31m[Kstate-[m[K>skip) == -1)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K339[m[K[36m[K:[m[K    /* try writing to input buffer for speed ([01;31m[Kstate-[m[K>size == 0 if buffer not
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K341[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>size) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K343[m[K[36m[K:[m[K            strm->next_in = [01;31m[Kstate-[m[K>in;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K344[m[K[36m[K:[m[K        have = (unsigned)((strm->next_in + strm->avail_in) - [01;31m[Kstate-[m[K>in);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K345[m[K[36m[K:[m[K        if (have < [01;31m[Kstate-[m[K>size) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K346[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>in[have] = (unsigned char)c;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K348[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>x.pos++;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K374[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_WRITE || [01;31m[Kstate-[m[K>err != Z_OK)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K403[m[K[36m[K:[m[K    strm = &([01;31m[Kstate-[m[K>strm);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K406[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_WRITE || [01;31m[Kstate-[m[K>err != Z_OK)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K410[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>size == 0 && gz_init(state) == -1)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K411[m[K[36m[K:[m[K        return [01;31m[Kstate-[m[K>err;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K414[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>seek) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K415[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>seek = 0;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K416[m[K[36m[K:[m[K        if (gz_zero(state, [01;31m[Kstate-[m[K>skip) == -1)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K417[m[K[36m[K:[m[K            return [01;31m[Kstate-[m[K>err;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K422[m[K[36m[K:[m[K       be [01;31m[Kstate-[m[K>size bytes available after the current contents */
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K424[m[K[36m[K:[m[K        strm->next_in = [01;31m[Kstate-[m[K>in;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K425[m[K[36m[K:[m[K    next = (char *)([01;31m[Kstate-[m[K>in + (strm->next_in - [01;31m[Kstate-[m[K>in) + strm->avail_in);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K426[m[K[36m[K:[m[K    next[[01;31m[Kstate-[m[K>size - 1] = 0;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K430[m[K[36m[K:[m[K    for (len = 0; len < [01;31m[Kstate-[m[K>size; len++)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K437[m[K[36m[K:[m[K    (void)vsnprintf(next, [01;31m[Kstate-[m[K>size, format, va);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K440[m[K[36m[K:[m[K    len = vsnprintf(next, [01;31m[Kstate-[m[K>size, format, va);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K445[m[K[36m[K:[m[K    if (len == 0 || (unsigned)len >= [01;31m[Kstate-[m[K>size || next[[01;31m[Kstate-[m[K>size - 1] != 0)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K450[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>x.pos += len;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K451[m[K[36m[K:[m[K    if (strm->avail_in >= [01;31m[Kstate-[m[K>size) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K452[m[K[36m[K:[m[K        left = strm->avail_in - [01;31m[Kstate-[m[K>size;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K453[m[K[36m[K:[m[K        strm->avail_in = [01;31m[Kstate-[m[K>size;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K455[m[K[36m[K:[m[K            return [01;31m[Kstate-[m[K>err;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K456[m[K[36m[K:[m[K        memmove([01;31m[Kstate-[m[K>in, [01;31m[Kstate-[m[K>in + [01;31m[Kstate-[m[K>size, left);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K457[m[K[36m[K:[m[K        strm->next_in = [01;31m[Kstate-[m[K>in;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K493[m[K[36m[K:[m[K    strm = &([01;31m[Kstate-[m[K>strm);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K500[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_WRITE || [01;31m[Kstate-[m[K>err != Z_OK)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K504[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>size == 0 && gz_init(state) == -1)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K505[m[K[36m[K:[m[K        return [01;31m[Kstate-[m[K>error;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K508[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>seek) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K509[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>seek = 0;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K510[m[K[36m[K:[m[K        if (gz_zero(state, [01;31m[Kstate-[m[K>skip) == -1)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K511[m[K[36m[K:[m[K            return [01;31m[Kstate-[m[K>error;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K516[m[K[36m[K:[m[K       be [01;31m[Kstate-[m[K>size bytes available after the current contents */
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K518[m[K[36m[K:[m[K        strm->next_in = [01;31m[Kstate-[m[K>in;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K520[m[K[36m[K:[m[K    next[[01;31m[Kstate-[m[K>size - 1] = 0;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K534[m[K[36m[K:[m[K    snprintf(next, [01;31m[Kstate-[m[K>size, format, a1, a2, a3, a4, a5, a6, a7, a8, a9,
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K538[m[K[36m[K:[m[K    len = snprintf(next, [01;31m[Kstate-[m[K>size, format, a1, a2, a3, a4, a5, a6, a7, a8,
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K544[m[K[36m[K:[m[K    if (len == 0 || len >= [01;31m[Kstate-[m[K>size || next[[01;31m[Kstate-[m[K>size - 1] != 0)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K549[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>x.pos += len;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K550[m[K[36m[K:[m[K    if (strm->avail_in >= [01;31m[Kstate-[m[K>size) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K551[m[K[36m[K:[m[K        left = strm->avail_in - [01;31m[Kstate-[m[K>size;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K552[m[K[36m[K:[m[K        strm->avail_in = [01;31m[Kstate-[m[K>size;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K554[m[K[36m[K:[m[K            return [01;31m[Kstate-[m[K>err;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K555[m[K[36m[K:[m[K        memmove([01;31m[Kstate-[m[K>in, [01;31m[Kstate-[m[K>in + [01;31m[Kstate-[m[K>size, left);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K556[m[K[36m[K:[m[K        strm->next_in = [01;31m[Kstate-[m[K>in;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K577[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_WRITE || [01;31m[Kstate-[m[K>err != Z_OK)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K585[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>seek) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K586[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>seek = 0;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K587[m[K[36m[K:[m[K        if (gz_zero(state, [01;31m[Kstate-[m[K>skip) == -1)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K588[m[K[36m[K:[m[K            return [01;31m[Kstate-[m[K>err;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K593[m[K[36m[K:[m[K    return [01;31m[Kstate-[m[K>err;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K609[m[K[36m[K:[m[K    strm = &([01;31m[Kstate-[m[K>strm);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K612[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_WRITE || [01;31m[Kstate-[m[K>err != Z_OK)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K616[m[K[36m[K:[m[K    if (level == [01;31m[Kstate-[m[K>level && strategy == [01;31m[Kstate-[m[K>strategy)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K620[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>seek) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K621[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>seek = 0;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K622[m[K[36m[K:[m[K        if (gz_zero(state, [01;31m[Kstate-[m[K>skip) == -1)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K623[m[K[36m[K:[m[K            return [01;31m[Kstate-[m[K>err;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K627[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>size) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K630[m[K[36m[K:[m[K            return [01;31m[Kstate-[m[K>err;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K633[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>level = level;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K634[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>strategy = strategy;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K651[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != GZ_WRITE)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K655[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>seek) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K656[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>seek = 0;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K657[m[K[36m[K:[m[K        if (gz_zero(state, [01;31m[Kstate-[m[K>skip) == -1)
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K658[m[K[36m[K:[m[K            ret = [01;31m[Kstate-[m[K>err;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K663[m[K[36m[K:[m[K        ret = [01;31m[Kstate-[m[K>err;
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K664[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>size) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K665[m[K[36m[K:[m[K        if (![01;31m[Kstate-[m[K>direct) {
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K666[m[K[36m[K:[m[K            (void)deflateEnd(&([01;31m[Kstate-[m[K>strm));
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K667[m[K[36m[K:[m[K            free([01;31m[Kstate-[m[K>out);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K669[m[K[36m[K:[m[K        free([01;31m[Kstate-[m[K>in);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K672[m[K[36m[K:[m[K    free([01;31m[Kstate-[m[K>path);
++[35m[Kgzwrite.c[m[K[36m[K:[m[K[32m[K673[m[K[36m[K:[m[K    if (close([01;31m[Kstate-[m[K>fd) == -1)
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K63[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>dmax = 32768U;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K64[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>wbits = (uInt)windowBits;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K65[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>wsize = 1U << windowBits;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K66[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>window = window;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K67[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>wnext = 0;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K68[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>whave = 0;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K97[m[K[36m[K:[m[K        while (sym < 144) [01;31m[Kstate-[m[K>lens[sym++] = 8;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K98[m[K[36m[K:[m[K        while (sym < 256) [01;31m[Kstate-[m[K>lens[sym++] = 9;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K99[m[K[36m[K:[m[K        while (sym < 280) [01;31m[Kstate-[m[K>lens[sym++] = 7;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K100[m[K[36m[K:[m[K        while (sym < 288) [01;31m[Kstate-[m[K>lens[sym++] = 8;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K104[m[K[36m[K:[m[K        inflate_table(LENS, [01;31m[Kstate-[m[K>lens, 288, &(next), &(bits), [01;31m[Kstate-[m[K>work);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K108[m[K[36m[K:[m[K        while (sym < 32) [01;31m[Kstate-[m[K>lens[sym++] = 5;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K111[m[K[36m[K:[m[K        inflate_table(DISTS, [01;31m[Kstate-[m[K>lens, 32, &(next), &(bits), [01;31m[Kstate-[m[K>work);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K119[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>lencode = lenfix;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K120[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>lenbits = 9;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K121[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>distcode = distfix;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K122[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>distbits = 5;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K134[m[K[36m[K:[m[K        hold = [01;31m[Kstate-[m[K>hold; \
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K135[m[K[36m[K:[m[K        bits = [01;31m[Kstate-[m[K>bits; \
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K145[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>hold = hold; \
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K146[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>bits = bits; \
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K213[m[K[36m[K:[m[K            put = [01;31m[Kstate-[m[K>window; \
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K214[m[K[36m[K:[m[K            left = [01;31m[Kstate-[m[K>wsize; \
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K215[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>whave = left; \
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K279[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>mode = TYPE;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K280[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>last = 0;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K281[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>whave = 0;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K286[m[K[36m[K:[m[K    put = [01;31m[Kstate-[m[K>window;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K287[m[K[36m[K:[m[K    left = [01;31m[Kstate-[m[K>wsize;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K291[m[K[36m[K:[m[K        switch ([01;31m[Kstate-[m[K>mode) {
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K294[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>last) {
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K296[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = DONE;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K300[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>last = BITS(1);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K305[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>last ? " (last)" : ""));
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K306[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = STORED;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K311[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>last ? " (last)" : ""));
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K312[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = LEN;              /* decode codes */
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K316[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>last ? " (last)" : ""));
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K317[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = TABLE;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K321[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K332[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K335[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>length = (unsigned)hold & 0xffff;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K337[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>length));
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K341[m[K[36m[K:[m[K            while ([01;31m[Kstate-[m[K>length != 0) {
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K342[m[K[36m[K:[m[K                copy = [01;31m[Kstate-[m[K>length;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K352[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>length -= copy;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K355[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = TYPE;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K361[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>nlen = BITS(5) + 257;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K363[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>ndist = BITS(5) + 1;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K365[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>ncode = BITS(4) + 4;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K368[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>nlen > 286 || [01;31m[Kstate-[m[K>ndist > 30) {
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K370[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K377[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>have = 0;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K378[m[K[36m[K:[m[K            while ([01;31m[Kstate-[m[K>have < [01;31m[Kstate-[m[K>ncode) {
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K380[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>lens[order[[01;31m[Kstate-[m[K>have++]] = (unsigned short)BITS(3);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K383[m[K[36m[K:[m[K            while ([01;31m[Kstate-[m[K>have < 19)
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K384[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>lens[order[[01;31m[Kstate-[m[K>have++]] = 0;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K385[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>next = [01;31m[Kstate-[m[K>codes;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K386[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>lencode = (code const FAR *)([01;31m[Kstate-[m[K>next);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K387[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>lenbits = 7;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K388[m[K[36m[K:[m[K            ret = inflate_table(CODES, [01;31m[Kstate-[m[K>lens, 19, &([01;31m[Kstate-[m[K>next),
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K389[m[K[36m[K:[m[K                                &([01;31m[Kstate-[m[K>lenbits), [01;31m[Kstate-[m[K>work);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K392[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K398[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>have = 0;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K399[m[K[36m[K:[m[K            while ([01;31m[Kstate-[m[K>have < [01;31m[Kstate-[m[K>nlen + [01;31m[Kstate-[m[K>ndist) {
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K401[m[K[36m[K:[m[K                    here = [01;31m[Kstate-[m[K>lencode[BITS([01;31m[Kstate-[m[K>lenbits)];
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K407[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>lens[[01;31m[Kstate-[m[K>have++] = here.val;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K413[m[K[36m[K:[m[K                        if ([01;31m[Kstate-[m[K>have == 0) {
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K415[m[K[36m[K:[m[K                            [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K418[m[K[36m[K:[m[K                        len = (unsigned)([01;31m[Kstate-[m[K>lens[[01;31m[Kstate-[m[K>have - 1]);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K436[m[K[36m[K:[m[K                    if ([01;31m[Kstate-[m[K>have + copy > [01;31m[Kstate-[m[K>nlen + [01;31m[Kstate-[m[K>ndist) {
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K438[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K442[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>lens[[01;31m[Kstate-[m[K>have++] = (unsigned short)len;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K447[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>mode == BAD) break;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K450[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>lens[256] == 0) {
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K452[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K459[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>next = [01;31m[Kstate-[m[K>codes;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K460[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>lencode = (code const FAR *)([01;31m[Kstate-[m[K>next);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K461[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>lenbits = 9;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K462[m[K[36m[K:[m[K            ret = inflate_table(LENS, [01;31m[Kstate-[m[K>lens, [01;31m[Kstate-[m[K>nlen, &([01;31m[Kstate-[m[K>next),
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K463[m[K[36m[K:[m[K                                &([01;31m[Kstate-[m[K>lenbits), [01;31m[Kstate-[m[K>work);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K466[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K469[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>distcode = (code const FAR *)([01;31m[Kstate-[m[K>next);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K470[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>distbits = 6;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K471[m[K[36m[K:[m[K            ret = inflate_table(DISTS, [01;31m[Kstate-[m[K>lens + [01;31m[Kstate-[m[K>nlen, [01;31m[Kstate-[m[K>ndist,
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K472[m[K[36m[K:[m[K                            &([01;31m[Kstate-[m[K>next), &([01;31m[Kstate-[m[K>distbits), [01;31m[Kstate-[m[K>work);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K475[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K479[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = LEN;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K486[m[K[36m[K:[m[K                if ([01;31m[Kstate-[m[K>whave < [01;31m[Kstate-[m[K>wsize)
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K487[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>whave = [01;31m[Kstate-[m[K>wsize - left;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K488[m[K[36m[K:[m[K                inflate_fast(strm, [01;31m[Kstate-[m[K>wsize);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K495[m[K[36m[K:[m[K                here = [01;31m[Kstate-[m[K>lencode[BITS([01;31m[Kstate-[m[K>lenbits)];
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K502[m[K[36m[K:[m[K                    here = [01;31m[Kstate-[m[K>lencode[last.val +
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K510[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>length = (unsigned)here.val;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K518[m[K[36m[K:[m[K                *put++ = (unsigned char)([01;31m[Kstate-[m[K>length);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K520[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = LEN;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K527[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = TYPE;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K534[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K539[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>extra = (unsigned)(here.op) & 15;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K540[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>extra != 0) {
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K541[m[K[36m[K:[m[K                NEEDBITS([01;31m[Kstate-[m[K>extra);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K542[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>length += BITS([01;31m[Kstate-[m[K>extra);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K543[m[K[36m[K:[m[K                DROPBITS([01;31m[Kstate-[m[K>extra);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K545[m[K[36m[K:[m[K            Tracevv((stderr, "inflate:         length %u\n", [01;31m[Kstate-[m[K>length));
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K549[m[K[36m[K:[m[K                here = [01;31m[Kstate-[m[K>distcode[BITS([01;31m[Kstate-[m[K>distbits)];
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K556[m[K[36m[K:[m[K                    here = [01;31m[Kstate-[m[K>distcode[last.val +
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K566[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K569[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>offset = (unsigned)here.val;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K572[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>extra = (unsigned)(here.op) & 15;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K573[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>extra != 0) {
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K574[m[K[36m[K:[m[K                NEEDBITS([01;31m[Kstate-[m[K>extra);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K575[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>offset += BITS([01;31m[Kstate-[m[K>extra);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K576[m[K[36m[K:[m[K                DROPBITS([01;31m[Kstate-[m[K>extra);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K578[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>offset > [01;31m[Kstate-[m[K>wsize - ([01;31m[Kstate-[m[K>whave < [01;31m[Kstate-[m[K>wsize ?
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K581[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K584[m[K[36m[K:[m[K            Tracevv((stderr, "inflate:         distance %u\n", [01;31m[Kstate-[m[K>offset));
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K589[m[K[36m[K:[m[K                copy = [01;31m[Kstate-[m[K>wsize - [01;31m[Kstate-[m[K>offset;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K595[m[K[36m[K:[m[K                    from = put - [01;31m[Kstate-[m[K>offset;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K598[m[K[36m[K:[m[K                if (copy > [01;31m[Kstate-[m[K>length) copy = [01;31m[Kstate-[m[K>length;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K599[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>length -= copy;
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K604[m[K[36m[K:[m[K            } while ([01;31m[Kstate-[m[K>length != 0);
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K610[m[K[36m[K:[m[K            if (left < [01;31m[Kstate-[m[K>wsize) {
++[35m[Kinfback.c[m[K[36m[K:[m[K[32m[K611[m[K[36m[K:[m[K                if (out(out_desc, [01;31m[Kstate-[m[K>window, [01;31m[Kstate-[m[K>wsize - left))
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K25[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>mode == LEN
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K29[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>bits < 8
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K31[m[K[36m[K:[m[K   On return, [01;31m[Kstate-[m[K>mode is one of:
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K88[m[K[36m[K:[m[K    dmax = [01;31m[Kstate-[m[K>dmax;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K90[m[K[36m[K:[m[K    wsize = [01;31m[Kstate-[m[K>wsize;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K91[m[K[36m[K:[m[K    whave = [01;31m[Kstate-[m[K>whave;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K92[m[K[36m[K:[m[K    wnext = [01;31m[Kstate-[m[K>wnext;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K93[m[K[36m[K:[m[K    window = [01;31m[Kstate-[m[K>window;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K94[m[K[36m[K:[m[K    hold = [01;31m[Kstate-[m[K>hold;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K95[m[K[36m[K:[m[K    bits = [01;31m[Kstate-[m[K>bits;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K96[m[K[36m[K:[m[K    lcode = [01;31m[Kstate-[m[K>lencode;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K97[m[K[36m[K:[m[K    dcode = [01;31m[Kstate-[m[K>distcode;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K98[m[K[36m[K:[m[K    lmask = (1U << [01;31m[Kstate-[m[K>lenbits) - 1;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K99[m[K[36m[K:[m[K    dmask = (1U << [01;31m[Kstate-[m[K>distbits) - 1;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K162[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K173[m[K[36m[K:[m[K                        if ([01;31m[Kstate-[m[K>sane) {
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K176[m[K[36m[K:[m[K                            [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K272[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K282[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = TYPE;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K287[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K304[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>hold = hold;
++[35m[Kinffast.c[m[K[36m[K:[m[K[32m[K305[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>bits = bits;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K26[m[K[36m[K:[m[K * - Change strm->next_out[-[01;31m[Kstate-[m[K>offset] to *(strm->next_out - [01;31m[Kstate-[m[K>offset)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K30[m[K[36m[K:[m[K * - Add comments on [01;31m[Kstate-[m[K>bits assertion in inffast.c
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K113[m[K[36m[K:[m[K    if (state == Z_NULL || [01;31m[Kstate-[m[K>strm != strm ||
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K114[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>mode < HEAD || [01;31m[Kstate-[m[K>mode > SYNC)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K126[m[K[36m[K:[m[K    strm->total_in = strm->total_out = [01;31m[Kstate-[m[K>total = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K128[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>wrap)        /* to support ill-conceived Java test suite */
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K129[m[K[36m[K:[m[K        strm->adler = [01;31m[Kstate-[m[K>wrap & 1;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K130[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>mode = HEAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K131[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>last = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K132[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>havedict = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K133[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>flags = -1;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K134[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>dmax = 32768U;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K135[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>head = Z_NULL;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K136[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>hold = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K137[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>bits = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K138[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>lencode = [01;31m[Kstate-[m[K>distcode = [01;31m[Kstate-[m[K>next = [01;31m[Kstate-[m[K>codes;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K139[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>sane = 1;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K140[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>back = -1;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K152[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>wsize = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K153[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>whave = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K154[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>wnext = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K185[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>window != Z_NULL && [01;31m[Kstate-[m[K>wbits != (unsigned)windowBits) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K186[m[K[36m[K:[m[K        ZFREE(strm, [01;31m[Kstate-[m[K>window);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K187[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>window = Z_NULL;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K191[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>wrap = wrap;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K192[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>wbits = (unsigned)windowBits;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K229[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>strm = strm;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K230[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>window = Z_NULL;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K231[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>mode = HEAD;     /* to pass state test in inflateReset2() */
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K258[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>hold = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K259[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>bits = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K262[m[K[36m[K:[m[K    if (bits > 16 || [01;31m[Kstate-[m[K>bits + (uInt)bits > 32) return Z_STREAM_ERROR;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K264[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>hold += (unsigned)value << [01;31m[Kstate-[m[K>bits;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K265[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>bits += (uInt)bits;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K294[m[K[36m[K:[m[K        while (sym < 144) [01;31m[Kstate-[m[K>lens[sym++] = 8;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K295[m[K[36m[K:[m[K        while (sym < 256) [01;31m[Kstate-[m[K>lens[sym++] = 9;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K296[m[K[36m[K:[m[K        while (sym < 280) [01;31m[Kstate-[m[K>lens[sym++] = 7;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K297[m[K[36m[K:[m[K        while (sym < 288) [01;31m[Kstate-[m[K>lens[sym++] = 8;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K301[m[K[36m[K:[m[K        inflate_table(LENS, [01;31m[Kstate-[m[K>lens, 288, &(next), &(bits), [01;31m[Kstate-[m[K>work);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K305[m[K[36m[K:[m[K        while (sym < 32) [01;31m[Kstate-[m[K>lens[sym++] = 5;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K308[m[K[36m[K:[m[K        inflate_table(DISTS, [01;31m[Kstate-[m[K>lens, 32, &(next), &(bits), [01;31m[Kstate-[m[K>work);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K316[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>lencode = lenfix;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K317[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>lenbits = 9;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K318[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>distcode = distfix;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K319[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>distbits = 5;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K408[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>window == Z_NULL) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K409[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>window = (unsigned char FAR *)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K410[m[K[36m[K:[m[K                        ZALLOC(strm, 1U << [01;31m[Kstate-[m[K>wbits,
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K412[m[K[36m[K:[m[K        if ([01;31m[Kstate-[m[K>window == Z_NULL) return 1;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K416[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>wsize == 0) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K417[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>wsize = 1U << [01;31m[Kstate-[m[K>wbits;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K418[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>wnext = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K419[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>whave = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K422[m[K[36m[K:[m[K    /* copy [01;31m[Kstate-[m[K>wsize or less output bytes into the circular window */
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K423[m[K[36m[K:[m[K    if (copy >= [01;31m[Kstate-[m[K>wsize) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K424[m[K[36m[K:[m[K        zmemcpy([01;31m[Kstate-[m[K>window, end - [01;31m[Kstate-[m[K>wsize, [01;31m[Kstate-[m[K>wsize);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K425[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>wnext = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K426[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>whave = [01;31m[Kstate-[m[K>wsize;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K429[m[K[36m[K:[m[K        dist = [01;31m[Kstate-[m[K>wsize - [01;31m[Kstate-[m[K>wnext;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K431[m[K[36m[K:[m[K        zmemcpy([01;31m[Kstate-[m[K>window + [01;31m[Kstate-[m[K>wnext, end - copy, dist);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K434[m[K[36m[K:[m[K            zmemcpy([01;31m[Kstate-[m[K>window, end - copy, copy);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K435[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>wnext = copy;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K436[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>whave = [01;31m[Kstate-[m[K>wsize;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K439[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>wnext += dist;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K440[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>wnext == [01;31m[Kstate-[m[K>wsize) [01;31m[Kstate-[m[K>wnext = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K441[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>whave < [01;31m[Kstate-[m[K>wsize) [01;31m[Kstate-[m[K>whave += dist;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K452[m[K[36m[K:[m[K    ([01;31m[Kstate-[m[K>flags ? crc32(check, buf, len) : adler32(check, buf, len))
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K483[m[K[36m[K:[m[K        hold = [01;31m[Kstate-[m[K>hold; \
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K484[m[K[36m[K:[m[K        bits = [01;31m[Kstate-[m[K>bits; \
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K494[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>hold = hold; \
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K495[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>bits = bits; \
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K651[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode == TYPE) [01;31m[Kstate-[m[K>mode = TYPEDO;      /* skip check */
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K657[m[K[36m[K:[m[K        switch ([01;31m[Kstate-[m[K>mode) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K659[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>wrap == 0) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K660[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = TYPEDO;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K665[m[K[36m[K:[m[K            if (([01;31m[Kstate-[m[K>wrap & 2) && hold == 0x8b1f) {  /* gzip header */
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K666[m[K[36m[K:[m[K                if ([01;31m[Kstate-[m[K>wbits == 0)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K667[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>wbits = 15;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K668[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>check = crc32(0L, Z_NULL, 0);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K669[m[K[36m[K:[m[K                CRC2([01;31m[Kstate-[m[K>check, hold);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K671[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = FLAGS;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K674[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>head != Z_NULL)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K675[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>head->done = -1;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K676[m[K[36m[K:[m[K            if (!([01;31m[Kstate-[m[K>wrap & 1) ||   /* check if zlib header allowed */
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K682[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K687[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K692[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>wbits == 0)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K693[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>wbits = len;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K694[m[K[36m[K:[m[K            if (len > 15 || len > [01;31m[Kstate-[m[K>wbits) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K696[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K699[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>dmax = 1U << len;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K700[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>flags = 0;               /* indicate zlib header */
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K702[m[K[36m[K:[m[K            strm->adler = [01;31m[Kstate-[m[K>check = adler32(0L, Z_NULL, 0);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K703[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = hold & 0x200 ? DICTID : TYPE;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K709[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>flags = (int)(hold);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K710[m[K[36m[K:[m[K            if (([01;31m[Kstate-[m[K>flags & 0xff) != Z_DEFLATED) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K712[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K715[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>flags & 0xe000) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K717[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K720[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>head != Z_NULL)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K721[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>head->text = (int)((hold >> 8) & 1);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K722[m[K[36m[K:[m[K            if (([01;31m[Kstate-[m[K>flags & 0x0200) && ([01;31m[Kstate-[m[K>wrap & 4))
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K723[m[K[36m[K:[m[K                CRC2([01;31m[Kstate-[m[K>check, hold);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K725[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = TIME;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K729[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>head != Z_NULL)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K730[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>head->time = hold;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K731[m[K[36m[K:[m[K            if (([01;31m[Kstate-[m[K>flags & 0x0200) && ([01;31m[Kstate-[m[K>wrap & 4))
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K732[m[K[36m[K:[m[K                CRC4([01;31m[Kstate-[m[K>check, hold);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K734[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = OS;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K738[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>head != Z_NULL) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K739[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>head->xflags = (int)(hold & 0xff);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K740[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>head->os = (int)(hold >> 8);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K742[m[K[36m[K:[m[K            if (([01;31m[Kstate-[m[K>flags & 0x0200) && ([01;31m[Kstate-[m[K>wrap & 4))
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K743[m[K[36m[K:[m[K                CRC2([01;31m[Kstate-[m[K>check, hold);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K745[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = EXLEN;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K748[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>flags & 0x0400) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K750[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>length = (unsigned)(hold);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K751[m[K[36m[K:[m[K                if ([01;31m[Kstate-[m[K>head != Z_NULL)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K752[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>head->extra_len = (unsigned)hold;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K753[m[K[36m[K:[m[K                if (([01;31m[Kstate-[m[K>flags & 0x0200) && ([01;31m[Kstate-[m[K>wrap & 4))
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K754[m[K[36m[K:[m[K                    CRC2([01;31m[Kstate-[m[K>check, hold);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K757[m[K[36m[K:[m[K            else if ([01;31m[Kstate-[m[K>head != Z_NULL)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K758[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>head->extra = Z_NULL;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K759[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = EXTRA;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K762[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>flags & 0x0400) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K763[m[K[36m[K:[m[K                copy = [01;31m[Kstate-[m[K>length;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K766[m[K[36m[K:[m[K                    if ([01;31m[Kstate-[m[K>head != Z_NULL &&
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K767[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>head->extra != Z_NULL) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K768[m[K[36m[K:[m[K                        len = [01;31m[Kstate-[m[K>head->extra_len - [01;31m[Kstate-[m[K>length;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K769[m[K[36m[K:[m[K                        zmemcpy([01;31m[Kstate-[m[K>head->extra + len, next,
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K770[m[K[36m[K:[m[K                                len + copy > [01;31m[Kstate-[m[K>head->extra_max ?
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K771[m[K[36m[K:[m[K                                [01;31m[Kstate-[m[K>head->extra_max - len : copy);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K773[m[K[36m[K:[m[K                    if (([01;31m[Kstate-[m[K>flags & 0x0200) && ([01;31m[Kstate-[m[K>wrap & 4))
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K774[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>check = crc32([01;31m[Kstate-[m[K>check, next, copy);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K777[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>length -= copy;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K779[m[K[36m[K:[m[K                if ([01;31m[Kstate-[m[K>length) goto inf_leave;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K781[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>length = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K782[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = NAME;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K785[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>flags & 0x0800) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K790[m[K[36m[K:[m[K                    if ([01;31m[Kstate-[m[K>head != Z_NULL &&
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K791[m[K[36m[K:[m[K                            [01;31m[Kstate-[m[K>head->name != Z_NULL &&
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K792[m[K[36m[K:[m[K                            [01;31m[Kstate-[m[K>length < [01;31m[Kstate-[m[K>head->name_max)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K793[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>head->name[[01;31m[Kstate-[m[K>length++] = (Bytef)len;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K795[m[K[36m[K:[m[K                if (([01;31m[Kstate-[m[K>flags & 0x0200) && ([01;31m[Kstate-[m[K>wrap & 4))
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K796[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>check = crc32([01;31m[Kstate-[m[K>check, next, copy);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K801[m[K[36m[K:[m[K            else if ([01;31m[Kstate-[m[K>head != Z_NULL)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K802[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>head->name = Z_NULL;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K803[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>length = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K804[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = COMMENT;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K807[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>flags & 0x1000) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K812[m[K[36m[K:[m[K                    if ([01;31m[Kstate-[m[K>head != Z_NULL &&
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K813[m[K[36m[K:[m[K                            [01;31m[Kstate-[m[K>head->comment != Z_NULL &&
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K814[m[K[36m[K:[m[K                            [01;31m[Kstate-[m[K>length < [01;31m[Kstate-[m[K>head->comm_max)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K815[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>head->comment[[01;31m[Kstate-[m[K>length++] = (Bytef)len;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K817[m[K[36m[K:[m[K                if (([01;31m[Kstate-[m[K>flags & 0x0200) && ([01;31m[Kstate-[m[K>wrap & 4))
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K818[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>check = crc32([01;31m[Kstate-[m[K>check, next, copy);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K823[m[K[36m[K:[m[K            else if ([01;31m[Kstate-[m[K>head != Z_NULL)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K824[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>head->comment = Z_NULL;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K825[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = HCRC;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K828[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>flags & 0x0200) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K830[m[K[36m[K:[m[K                if (([01;31m[Kstate-[m[K>wrap & 4) && hold != ([01;31m[Kstate-[m[K>check & 0xffff)) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K832[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K837[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>head != Z_NULL) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K838[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>head->hcrc = (int)(([01;31m[Kstate-[m[K>flags >> 9) & 1);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K839[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>head->done = 1;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K841[m[K[36m[K:[m[K            strm->adler = [01;31m[Kstate-[m[K>check = crc32(0L, Z_NULL, 0);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K842[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = TYPE;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K847[m[K[36m[K:[m[K            strm->adler = [01;31m[Kstate-[m[K>check = ZSWAP32(hold);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K849[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = DICT;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K852[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>havedict == 0) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K856[m[K[36m[K:[m[K            strm->adler = [01;31m[Kstate-[m[K>check = adler32(0L, Z_NULL, 0);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K857[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = TYPE;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K863[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>last) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K865[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = CHECK;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K869[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>last = BITS(1);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K874[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>last ? " (last)" : ""));
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K875[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = STORED;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K880[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>last ? " (last)" : ""));
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K881[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = LEN_;             /* decode codes */
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K889[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>last ? " (last)" : ""));
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K890[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = TABLE;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K894[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K903[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K906[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>length = (unsigned)hold & 0xffff;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K908[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>length));
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K910[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = COPY_;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K914[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = COPY;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K917[m[K[36m[K:[m[K            copy = [01;31m[Kstate-[m[K>length;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K927[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>length -= copy;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K931[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = TYPE;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K935[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>nlen = BITS(5) + 257;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K937[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>ndist = BITS(5) + 1;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K939[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>ncode = BITS(4) + 4;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K942[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>nlen > 286 || [01;31m[Kstate-[m[K>ndist > 30) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K944[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K949[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>have = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K950[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = LENLENS;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K953[m[K[36m[K:[m[K            while ([01;31m[Kstate-[m[K>have < [01;31m[Kstate-[m[K>ncode) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K955[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>lens[order[[01;31m[Kstate-[m[K>have++]] = (unsigned short)BITS(3);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K958[m[K[36m[K:[m[K            while ([01;31m[Kstate-[m[K>have < 19)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K959[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>lens[order[[01;31m[Kstate-[m[K>have++]] = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K960[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>next = [01;31m[Kstate-[m[K>codes;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K961[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>lencode = (const code FAR *)([01;31m[Kstate-[m[K>next);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K962[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>lenbits = 7;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K963[m[K[36m[K:[m[K            ret = inflate_table(CODES, [01;31m[Kstate-[m[K>lens, 19, &([01;31m[Kstate-[m[K>next),
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K964[m[K[36m[K:[m[K                                &([01;31m[Kstate-[m[K>lenbits), [01;31m[Kstate-[m[K>work);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K967[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K971[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>have = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K972[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = CODELENS;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K975[m[K[36m[K:[m[K            while ([01;31m[Kstate-[m[K>have < [01;31m[Kstate-[m[K>nlen + [01;31m[Kstate-[m[K>ndist) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K977[m[K[36m[K:[m[K                    here = [01;31m[Kstate-[m[K>lencode[BITS([01;31m[Kstate-[m[K>lenbits)];
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K983[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>lens[[01;31m[Kstate-[m[K>have++] = here.val;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K989[m[K[36m[K:[m[K                        if ([01;31m[Kstate-[m[K>have == 0) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K991[m[K[36m[K:[m[K                            [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K994[m[K[36m[K:[m[K                        len = [01;31m[Kstate-[m[K>lens[[01;31m[Kstate-[m[K>have - 1];
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1012[m[K[36m[K:[m[K                    if ([01;31m[Kstate-[m[K>have + copy > [01;31m[Kstate-[m[K>nlen + [01;31m[Kstate-[m[K>ndist) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1014[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1018[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>lens[[01;31m[Kstate-[m[K>have++] = (unsigned short)len;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1023[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>mode == BAD) break;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1026[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>lens[256] == 0) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1028[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1035[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>next = [01;31m[Kstate-[m[K>codes;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1036[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>lencode = (const code FAR *)([01;31m[Kstate-[m[K>next);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1037[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>lenbits = 9;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1038[m[K[36m[K:[m[K            ret = inflate_table(LENS, [01;31m[Kstate-[m[K>lens, [01;31m[Kstate-[m[K>nlen, &([01;31m[Kstate-[m[K>next),
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1039[m[K[36m[K:[m[K                                &([01;31m[Kstate-[m[K>lenbits), [01;31m[Kstate-[m[K>work);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1042[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1045[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>distcode = (const code FAR *)([01;31m[Kstate-[m[K>next);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1046[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>distbits = 6;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1047[m[K[36m[K:[m[K            ret = inflate_table(DISTS, [01;31m[Kstate-[m[K>lens + [01;31m[Kstate-[m[K>nlen, [01;31m[Kstate-[m[K>ndist,
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1048[m[K[36m[K:[m[K                            &([01;31m[Kstate-[m[K>next), &([01;31m[Kstate-[m[K>distbits), [01;31m[Kstate-[m[K>work);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1051[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1055[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = LEN_;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1059[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = LEN;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1066[m[K[36m[K:[m[K                if ([01;31m[Kstate-[m[K>mode == TYPE)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1067[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>back = -1;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1070[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>back = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1072[m[K[36m[K:[m[K                here = [01;31m[Kstate-[m[K>lencode[BITS([01;31m[Kstate-[m[K>lenbits)];
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1079[m[K[36m[K:[m[K                    here = [01;31m[Kstate-[m[K>lencode[last.val +
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1085[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>back += last.bits;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1088[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>back += here.bits;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1089[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>length = (unsigned)here.val;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1094[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = LIT;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1099[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>back = -1;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1100[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = TYPE;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1105[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1108[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>extra = (unsigned)(here.op) & 15;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1109[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = LENEXT;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1112[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>extra) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1113[m[K[36m[K:[m[K                NEEDBITS([01;31m[Kstate-[m[K>extra);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1114[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>length += BITS([01;31m[Kstate-[m[K>extra);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1115[m[K[36m[K:[m[K                DROPBITS([01;31m[Kstate-[m[K>extra);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1116[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>back += [01;31m[Kstate-[m[K>extra;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1118[m[K[36m[K:[m[K            Tracevv((stderr, "inflate:         length %u\n", [01;31m[Kstate-[m[K>length));
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1119[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>was = [01;31m[Kstate-[m[K>length;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1120[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = DIST;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1124[m[K[36m[K:[m[K                here = [01;31m[Kstate-[m[K>distcode[BITS([01;31m[Kstate-[m[K>distbits)];
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1131[m[K[36m[K:[m[K                    here = [01;31m[Kstate-[m[K>distcode[last.val +
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1137[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>back += last.bits;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1140[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>back += here.bits;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1143[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1146[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>offset = (unsigned)here.val;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1147[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>extra = (unsigned)(here.op) & 15;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1148[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = DISTEXT;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1151[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>extra) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1152[m[K[36m[K:[m[K                NEEDBITS([01;31m[Kstate-[m[K>extra);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1153[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>offset += BITS([01;31m[Kstate-[m[K>extra);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1154[m[K[36m[K:[m[K                DROPBITS([01;31m[Kstate-[m[K>extra);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1155[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>back += [01;31m[Kstate-[m[K>extra;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1158[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>offset > [01;31m[Kstate-[m[K>dmax) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1160[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1164[m[K[36m[K:[m[K            Tracevv((stderr, "inflate:         distance %u\n", [01;31m[Kstate-[m[K>offset));
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1165[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = MATCH;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1170[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>offset > copy) {         /* copy from window */
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1171[m[K[36m[K:[m[K                copy = [01;31m[Kstate-[m[K>offset - copy;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1172[m[K[36m[K:[m[K                if (copy > [01;31m[Kstate-[m[K>whave) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1173[m[K[36m[K:[m[K                    if ([01;31m[Kstate-[m[K>sane) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1175[m[K[36m[K:[m[K                        [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1180[m[K[36m[K:[m[K                    copy -= [01;31m[Kstate-[m[K>whave;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1181[m[K[36m[K:[m[K                    if (copy > [01;31m[Kstate-[m[K>length) copy = [01;31m[Kstate-[m[K>length;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1184[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>length -= copy;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1188[m[K[36m[K:[m[K                    if ([01;31m[Kstate-[m[K>length == 0) [01;31m[Kstate-[m[K>mode = LEN;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1192[m[K[36m[K:[m[K                if (copy > [01;31m[Kstate-[m[K>wnext) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1193[m[K[36m[K:[m[K                    copy -= [01;31m[Kstate-[m[K>wnext;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1194[m[K[36m[K:[m[K                    from = [01;31m[Kstate-[m[K>window + ([01;31m[Kstate-[m[K>wsize - copy);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1197[m[K[36m[K:[m[K                    from = [01;31m[Kstate-[m[K>window + ([01;31m[Kstate-[m[K>wnext - copy);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1198[m[K[36m[K:[m[K                if (copy > [01;31m[Kstate-[m[K>length) copy = [01;31m[Kstate-[m[K>length;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1201[m[K[36m[K:[m[K                from = put - [01;31m[Kstate-[m[K>offset;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1202[m[K[36m[K:[m[K                copy = [01;31m[Kstate-[m[K>length;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1206[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>length -= copy;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1210[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>length == 0) [01;31m[Kstate-[m[K>mode = LEN;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1214[m[K[36m[K:[m[K            *put++ = (unsigned char)([01;31m[Kstate-[m[K>length);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1216[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = LEN;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1219[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>wrap) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1223[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>total += out;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1224[m[K[36m[K:[m[K                if (([01;31m[Kstate-[m[K>wrap & 4) && out)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1225[m[K[36m[K:[m[K                    strm->adler = [01;31m[Kstate-[m[K>check =
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1226[m[K[36m[K:[m[K                        UPDATE_CHECK([01;31m[Kstate-[m[K>check, put - out, out);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1228[m[K[36m[K:[m[K                if (([01;31m[Kstate-[m[K>wrap & 4) && (
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1230[m[K[36m[K:[m[K                     [01;31m[Kstate-[m[K>flags ? hold :
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1232[m[K[36m[K:[m[K                     ZSWAP32(hold)) != [01;31m[Kstate-[m[K>check) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1234[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1241[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = LENGTH;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1244[m[K[36m[K:[m[K            if ([01;31m[Kstate-[m[K>wrap && [01;31m[Kstate-[m[K>flags) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1246[m[K[36m[K:[m[K                if (([01;31m[Kstate-[m[K>wrap & 4) && hold != ([01;31m[Kstate-[m[K>total & 0xffffffff)) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1248[m[K[36m[K:[m[K                    [01;31m[Kstate-[m[K>mode = BAD;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1255[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = DONE;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1279[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>wsize || (out != strm->avail_out && [01;31m[Kstate-[m[K>mode < BAD &&
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1280[m[K[36m[K:[m[K            ([01;31m[Kstate-[m[K>mode < CHECK || flush != Z_FINISH)))
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1282[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>mode = MEM;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1289[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>total += out;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1290[m[K[36m[K:[m[K    if (([01;31m[Kstate-[m[K>wrap & 4) && out)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1291[m[K[36m[K:[m[K        strm->adler = [01;31m[Kstate-[m[K>check =
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1292[m[K[36m[K:[m[K            UPDATE_CHECK([01;31m[Kstate-[m[K>check, strm->next_out - out, out);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1293[m[K[36m[K:[m[K    strm->data_type = (int)[01;31m[Kstate-[m[K>bits + ([01;31m[Kstate-[m[K>last ? 64 : 0) +
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1294[m[K[36m[K:[m[K                      ([01;31m[Kstate-[m[K>mode == TYPE ? 128 : 0) +
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1295[m[K[36m[K:[m[K                      ([01;31m[Kstate-[m[K>mode == LEN_ || [01;31m[Kstate-[m[K>mode == COPY_ ? 256 : 0);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1308[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>window != Z_NULL) ZFREE(strm, [01;31m[Kstate-[m[K>window);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1327[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>whave && dictionary != Z_NULL) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1328[m[K[36m[K:[m[K        zmemcpy(dictionary, [01;31m[Kstate-[m[K>window + [01;31m[Kstate-[m[K>wnext,
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1329[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>whave - [01;31m[Kstate-[m[K>wnext);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1330[m[K[36m[K:[m[K        zmemcpy(dictionary + [01;31m[Kstate-[m[K>whave - [01;31m[Kstate-[m[K>wnext,
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1331[m[K[36m[K:[m[K                [01;31m[Kstate-[m[K>window, [01;31m[Kstate-[m[K>wnext);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1334[m[K[36m[K:[m[K        *dictLength = [01;31m[Kstate-[m[K>whave;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1350[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>wrap != 0 && [01;31m[Kstate-[m[K>mode != DICT)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1354[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode == DICT) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1357[m[K[36m[K:[m[K        if (dictid != [01;31m[Kstate-[m[K>check)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1365[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>mode = MEM;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1368[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>havedict = 1;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1382[m[K[36m[K:[m[K    if (([01;31m[Kstate-[m[K>wrap & 2) == 0) return Z_STREAM_ERROR;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1385[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>head = head;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1436[m[K[36m[K:[m[K    if (strm->avail_in == 0 && [01;31m[Kstate-[m[K>bits < 8) return Z_BUF_ERROR;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1439[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>mode != SYNC) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1440[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>mode = SYNC;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1441[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>hold <<= [01;31m[Kstate-[m[K>bits & 7;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1442[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>bits -= [01;31m[Kstate-[m[K>bits & 7;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1444[m[K[36m[K:[m[K        while ([01;31m[Kstate-[m[K>bits >= 8) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1445[m[K[36m[K:[m[K            buf[len++] = (unsigned char)([01;31m[Kstate-[m[K>hold);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1446[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>hold >>= 8;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1447[m[K[36m[K:[m[K            [01;31m[Kstate-[m[K>bits -= 8;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1449[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>have = 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1450[m[K[36m[K:[m[K        syncsearch(&([01;31m[Kstate-[m[K>have), buf, len);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1454[m[K[36m[K:[m[K    len = syncsearch(&([01;31m[Kstate-[m[K>have), strm->next_in, strm->avail_in);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1460[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>have != 4) return Z_DATA_ERROR;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1461[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>flags == -1)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1462[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>wrap = 0;    /* if no header yet, treat as raw */
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1464[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>wrap &= ~4;  /* no point in computing a check value now */
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1465[m[K[36m[K:[m[K    flags = [01;31m[Kstate-[m[K>flags;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1469[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>flags = flags;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1470[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>mode = TYPE;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1489[m[K[36m[K:[m[K    return [01;31m[Kstate-[m[K>mode == STORED && [01;31m[Kstate-[m[K>bits == 0;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1511[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>window != Z_NULL) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1513[m[K[36m[K:[m[K                 ZALLOC(source, 1U << [01;31m[Kstate-[m[K>wbits, sizeof(unsigned char));
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1524[m[K[36m[K:[m[K    if ([01;31m[Kstate-[m[K>lencode >= [01;31m[Kstate-[m[K>codes &&
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1525[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>lencode <= [01;31m[Kstate-[m[K>codes + ENOUGH - 1) {
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1526[m[K[36m[K:[m[K        copy->lencode = copy->codes + ([01;31m[Kstate-[m[K>lencode - [01;31m[Kstate-[m[K>codes);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1527[m[K[36m[K:[m[K        copy->distcode = copy->codes + ([01;31m[Kstate-[m[K>distcode - [01;31m[Kstate-[m[K>codes);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1529[m[K[36m[K:[m[K    copy->next = copy->codes + ([01;31m[Kstate-[m[K>next - [01;31m[Kstate-[m[K>codes);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1531[m[K[36m[K:[m[K        wsize = 1U << [01;31m[Kstate-[m[K>wbits;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1532[m[K[36m[K:[m[K        zmemcpy(window, [01;31m[Kstate-[m[K>window, wsize);
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1548[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>sane = !subvert;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1552[m[K[36m[K:[m[K    [01;31m[Kstate-[m[K>sane = 1;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1565[m[K[36m[K:[m[K    if (check && [01;31m[Kstate-[m[K>wrap)
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1566[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>wrap |= 4;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1568[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>wrap &= ~4;
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1580[m[K[36m[K:[m[K    return (long)(((unsigned long)((long)[01;31m[Kstate-[m[K>back)) << 16) +
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1581[m[K[36m[K:[m[K        ([01;31m[Kstate-[m[K>mode == COPY ? [01;31m[Kstate-[m[K>length :
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1582[m[K[36m[K:[m[K            ([01;31m[Kstate-[m[K>mode == MATCH ? [01;31m[Kstate-[m[K>was - [01;31m[Kstate-[m[K>length : 0));
++[35m[Kinflate.c[m[K[36m[K:[m[K[32m[K1591[m[K[36m[K:[m[K    return (unsigned long)([01;31m[Kstate-[m[K>next - [01;31m[Kstate-[m[K>codes);
++[35m[Ktest/infcover.c[m[K[36m[K:[m[K[32m[K459[m[K[36m[K:[m[K        [01;31m[Kstate-[m[K>mode = SYNC;     /* force an otherwise impossible situation */
+バイナリーファイル zlib-1.2.12_orig/trees.lo とzlib-1.2.12/trees.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/trees.o とzlib-1.2.12/trees.o は異なります
+バイナリーファイル zlib-1.2.12_orig/uncompr.lo とzlib-1.2.12/uncompr.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/uncompr.o とzlib-1.2.12/uncompr.o は異なります
+diff --color -uprN zlib-1.2.12_orig/zconf.h zlib-1.2.12/zconf.h
+--- zlib-1.2.12_orig/zconf.h	2017-01-01 16:37:10.000000000 +0900
++++ zlib-1.2.12/zconf.h	2022-04-06 23:10:53.741135214 +0900
+@@ -431,11 +431,11 @@ typedef uLong FAR uLongf;
+    typedef unsigned long z_crc_t;
+ #endif
+ 
+-#ifdef HAVE_UNISTD_H    /* may be set to #if 1 by ./configure */
++#if 1    /* was set to #if 1 by ./configure */
+ #  define Z_HAVE_UNISTD_H
+ #endif
+ 
+-#ifdef HAVE_STDARG_H    /* may be set to #if 1 by ./configure */
++#if 1    /* was set to #if 1 by ./configure */
+ #  define Z_HAVE_STDARG_H
+ #endif
+ 
+diff --color -uprN zlib-1.2.12_orig/zlib.pc zlib-1.2.12/zlib.pc
+--- zlib-1.2.12_orig/zlib.pc	1970-01-01 09:00:00.000000000 +0900
++++ zlib-1.2.12/zlib.pc	2022-04-06 23:10:53.957134744 +0900
+@@ -0,0 +1,13 @@
++prefix=/usr/local
++exec_prefix=${prefix}
++libdir=${exec_prefix}/lib
++sharedlibdir=${libdir}
++includedir=${prefix}/include
++
++Name: zlib
++Description: zlib compression library
++Version: 1.2.12
++
++Requires:
++Libs: -L${libdir} -L${sharedlibdir} -lz
++Cflags: -I${includedir}
+バイナリーファイル zlib-1.2.12_orig/zutil.lo とzlib-1.2.12/zutil.lo は異なります
+バイナリーファイル zlib-1.2.12_orig/zutil.o とzlib-1.2.12/zutil.o は異なります
